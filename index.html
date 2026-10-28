@@ -1,0 +1,2848 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Aspirin: Molecular Action</title>
+<meta name="description" content="Interactive 3D model of aspirin showing how it acetylates cyclooxygenase.">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: the molecule owns the full screen; a laptop-style notch at top centre is the only control centre.
+   Everything else is small glass overlays that appear only when they have something to say. */
+:root {
+  --bg: #03050b;
+  --fg: #e9ecf6;
+  --muted: #8d95ae;
+  --dim: #5d6582;
+  --glass: rgba(7, 9, 17, 0.74);
+  --line: rgba(160, 175, 255, 0.12);
+  --line-hi: rgba(160, 175, 255, 0.26);
+  --violet: #8b7bff;
+  --cyan: #45e0ea;
+  --orange: #ff9a3c;
+  --teal: #5ce1c6;
+  --red: #ff5a5f;
+  --live: #46e0a2;
+  --display: "Sora", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--display);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+#scene.can-pick { cursor: pointer; }
+#scene.dragging { cursor: grabbing; }
+.vignette {
+  position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 80% 70% at 50% 48%, transparent 55%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+/* ---------- Title ---------- */
+.title {
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top, 0px));
+  left: max(20px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+  display: grid; gap: 6px;
+}
+.title h1 {
+  margin: 0;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.title h1 span { color: var(--orange); }
+.title p { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.badge {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 4px 9px;
+  border: 1px solid var(--line-hi);
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
+  color: #c9cfe6;
+  background: rgba(10, 13, 24, 0.6);
+}
+
+/* ---------- Notch ---------- */
+.notch {
+  --panel-w: min(640px, calc(100vw - 24px));
+  position: fixed; top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 214px; height: 36px;
+  background: #000;
+  border-radius: 0 0 20px 20px;
+  overflow: hidden;
+  z-index: 40;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.9), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  transition: width 0.55s var(--ease-out), height 0.55s var(--ease-out), border-radius 0.55s var(--ease-out), background 0.4s ease, box-shadow 0.5s ease;
+}
+.notch[data-open="true"] {
+  width: var(--panel-w);
+  height: var(--open-h, 320px);
+  border-radius: 0 0 30px 30px;
+  background: rgba(2, 3, 8, 0.86);
+  backdrop-filter: blur(26px) saturate(1.3);
+  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(150, 165, 255, 0.1), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+.notch-face {
+  position: relative;
+  width: 100%; height: 36px;
+  display: flex; align-items: center; justify-content: center; gap: 11px;
+  padding: 0 16px;
+  border: 0; background: transparent;
+  cursor: pointer;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.2em;
+  color: #cfd5ea;
+  white-space: nowrap;
+}
+.notch-face:focus-visible { outline-offset: -4px; border-radius: 0 0 18px 18px; }
+.lens {
+  width: 11px; height: 11px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 35%, #4d5d98 0, #141a2e 45%, #05070d 72%);
+  box-shadow: 0 0 0 2px #0d0f16;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--violet); animation: breathe 3.2s ease-in-out infinite; }
+.status-dot[data-tone="live"] { background: var(--live); animation: ping 1.6s ease-in-out infinite; }
+.status-dot[data-tone="wait"] { background: var(--orange); animation: ping 1.6s ease-in-out infinite; }
+.status-dot[data-tone="play"] { background: var(--orange); }
+@keyframes breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@keyframes ping {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent); opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.notch-panel {
+  position: absolute; top: 36px; left: 50%;
+  width: var(--panel-w);
+  transform: translate(-50%, -8px);
+  padding: 8px 18px 16px;
+  display: grid; gap: 12px;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.4s var(--ease-out);
+  pointer-events: none;
+}
+.notch[data-open="true"] .notch-panel {
+  opacity: 1; transform: translate(-50%, 0);
+  transition-delay: 0.12s;
+  pointer-events: auto;
+}
+
+.modes {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  padding: 4px; gap: 4px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+.modes button {
+  height: 38px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.modes button:hover { color: var(--fg); }
+.modes button[aria-selected="true"] { background: rgba(255, 255, 255, 0.1); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-hi); }
+
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row-note { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.row-note b { color: var(--fg); font-weight: 500; }
+.mono { font-family: var(--mono); }
+
+.chip {
+  --c: var(--violet);
+  height: 34px; padding: 0 13px 0 11px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted); font-size: 12.5px; cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.chip:hover { color: var(--fg); }
+.chip[aria-pressed="true"] { color: var(--fg); border-color: color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 12%, transparent); }
+
+.tool {
+  height: 36px; min-width: 36px; padding: 0 11px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid var(--line); border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted); font-size: 12px; cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.tool:hover { color: var(--fg); background: rgba(255, 255, 255, 0.07); }
+.tool:active { transform: scale(0.96); }
+.tool[aria-pressed="true"] { color: var(--fg); border-color: var(--line-hi); background: rgba(255, 255, 255, 0.09); }
+.tool:disabled { opacity: 0.4; cursor: not-allowed; }
+.tool svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tool.primary { color: #1a0d02; background: var(--orange); border-color: transparent; font-weight: 600; }
+.tool.primary:hover { background: #ffb062; color: #1a0d02; }
+
+.seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255, 255, 255, 0.03); }
+.seg button { height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+.seg button:hover { color: var(--fg); }
+.seg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.11); color: var(--fg); }
+.spacer { flex: 1; }
+.divider { height: 1px; background: var(--line); }
+
+.hands-row { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: rgba(70, 224, 162, 0.05); border: 1px solid rgba(70, 224, 162, 0.16); }
+.hands-row .row { gap: 10px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); flex: none; }
+.live-dot[data-on="true"] { background: var(--live); box-shadow: 0 0 10px var(--live); }
+.range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.range input { width: 120px; accent-color: var(--live); }
+.keys { font-family: var(--mono); font-size: 10.5px; color: var(--dim); letter-spacing: 0.02em; line-height: 1.6; }
+.keys kbd { font-family: inherit; color: var(--muted); padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }
+
+/* ---------- Floating cards ---------- */
+.card {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.9);
+}
+.fade-card { transition: opacity 0.35s var(--ease-out), transform 0.45s var(--ease-out); }
+.fade-card.off { opacity: 0; transform: translateY(10px); pointer-events: none; }
+
+#info {
+  position: fixed;
+  left: max(20px, env(safe-area-inset-left, 0px));
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  width: min(350px, calc(100vw - 40px));
+  padding: 16px;
+  display: grid; gap: 12px;
+}
+.info-head { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.el-tile {
+  --c: #464a53;
+  width: 46px; height: 46px; border-radius: 13px;
+  display: grid; place-items: center;
+  font-size: 20px; font-weight: 600;
+  background: color-mix(in srgb, var(--c) 30%, #0b0e18);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent), 0 0 24px -6px var(--c);
+}
+.info-head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.info-head h2 small { font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+.info-head p { margin: 2px 0 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 9px; background: rgba(255, 255, 255, 0.05); color: var(--muted); cursor: pointer; }
+.icon-btn:hover { color: var(--fg); background: rgba(255, 255, 255, 0.1); }
+.icon-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.pill {
+  --c: var(--violet);
+  justify-self: start;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 10px 4px 8px; border-radius: 999px;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--c) 70%, white);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+}
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.bond-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.bond-list li { font-family: var(--mono); font-size: 11.5px; padding: 3px 8px; border-radius: 7px; background: rgba(255, 255, 255, 0.05); color: #c9cfe6; }
+.info-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.info-text { margin: 0; font-size: 13px; line-height: 1.55; color: #cdd2e4; text-wrap: pretty; }
+
+#groupLabel {
+  --c: var(--violet);
+  position: fixed; left: 0; top: 0;
+  width: 270px;
+  padding: 14px 16px;
+  border-left: 2px solid var(--c);
+  border-radius: 6px 16px 16px 6px;
+  pointer-events: none;
+  will-change: transform;
+}
+#groupLabel h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--c) 55%, white); letter-spacing: 0.01em; }
+#groupLabel p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #cdd2e4; }
+#leaders { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+#caption {
+  position: fixed; left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(600px, calc(100vw - 32px));
+  padding: 16px 16px 14px 20px;
+  display: grid; gap: 10px;
+}
+#caption.off { transform: translate(-50%, 10px); }
+.cap-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cap-stage { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; color: var(--orange); text-transform: uppercase; }
+.cap-title { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg); }
+.cap-chip { margin-left: auto; font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; border-radius: 999px; color: #ffd2a8; border: 1px solid rgba(255, 154, 60, 0.35); background: rgba(255, 154, 60, 0.08); }
+.cap-text { margin: 0; font-size: 17px; font-weight: 400; line-height: 1.45; letter-spacing: -0.01em; text-wrap: balance; }
+.cap-nav { display: flex; align-items: center; gap: 10px; }
+.dots { display: flex; gap: 6px; flex: 1; }
+.dots button { flex: 1; height: 18px; padding: 0; border: 0; background: transparent; cursor: pointer; display: grid; align-items: center; }
+.dots button i { display: block; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; position: relative; }
+.dots button i b { position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--p, 0)); background: var(--orange); }
+.dots button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.medical {
+  display: grid; gap: 4px;
+  padding: 10px 12px; border-radius: 12px;
+  background: rgba(92, 225, 198, 0.06); border: 1px solid rgba(92, 225, 198, 0.2);
+  transition: opacity 0.5s var(--ease-out);
+}
+.medical b { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--teal); }
+.medical p { margin: 0; font-size: 13px; line-height: 1.5; color: #d3f5ec; }
+
+#hint {
+  position: fixed; left: 50%;
+  bottom: max(26px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  padding: 9px 16px; border-radius: 999px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
+}
+
+#toast {
+  --c: var(--live);
+  position: fixed; top: 50px; left: 50%;
+  transform: translate(-50%, -6px);
+  padding: 8px 16px; border-radius: 999px;
+  background: rgba(4, 6, 12, 0.82);
+  border: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
+  box-shadow: 0 0 26px -8px var(--c);
+  font-family: var(--mono); font-size: 12px;
+  opacity: 0; pointer-events: none; white-space: nowrap;
+  transition: opacity 0.2s ease, transform 0.3s var(--ease-out);
+  z-index: 35;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 3D-anchored tags */
+#tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.tag {
+  --c: #cfd5ea;
+  position: absolute; left: 0; top: 0;
+  padding: 4px 9px; border-radius: 8px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+  color: var(--c);
+  background: rgba(4, 6, 12, 0.72);
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  will-change: transform;
+}
+.tag.on { opacity: 1; }
+.tag.big { font-size: 12px; font-weight: 500; padding: 6px 11px; border-color: color-mix(in srgb, var(--c) 60%, transparent); box-shadow: 0 0 22px -8px var(--c); }
+.tag.plain { background: transparent; border-color: transparent; }
+
+/* ---------- Hand tracking ---------- */
+#pip {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right, 0px));
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  width: 232px;
+  overflow: hidden;
+  padding: 0;
+}
+.pip-video { position: relative; aspect-ratio: 4 / 3; background: #000; }
+.pip-video video, .pip-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pip-video video { object-fit: cover; transform: scaleX(-1); opacity: 0.85; }
+.pip-status { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; }
+.pip-status .mono { font-size: 11px; color: var(--muted); }
+#pipGesture { font-family: var(--mono); font-size: 11px; color: var(--live); }
+.pip-msg { padding: 0 12px 10px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+
+#handCursor {
+  --p: 0;
+  --c: var(--live);
+  position: fixed; left: 0; top: 0;
+  width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  pointer-events: none; z-index: 30;
+  will-change: transform;
+  transition: opacity 0.2s ease;
+}
+#handCursor .ring { position: absolute; inset: 8px; border-radius: 50%; border: 1.5px solid var(--c); box-shadow: 0 0 16px -2px var(--c); transition: inset 0.15s var(--ease-out), background 0.15s ease; }
+#handCursor .dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--c); }
+#handCursor[data-g="Pinch"] { --c: var(--orange); }
+#handCursor[data-g="Pinch"] .ring { inset: 13px; background: color-mix(in srgb, var(--orange) 30%, transparent); }
+#handCursor[data-g="Fist"] { --c: var(--red); }
+#handCursor[data-g="Open palm"] .ring { inset: 2px; }
+#handCursor svg { position: absolute; inset: -6px; width: 56px; height: 56px; transform: rotate(-90deg); }
+#handCursor svg circle { fill: none; stroke: var(--c); stroke-width: 2.5; stroke-dasharray: 150.8; stroke-dashoffset: calc(150.8 * (1 - var(--p))); stroke-linecap: round; opacity: calc(var(--p) * 4); }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; place-items: center;
+  padding: 24px;
+  background: rgba(2, 3, 8, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.dialog { width: min(440px, 100%); padding: 26px; display: grid; gap: 16px; }
+.dialog h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.dialog p { margin: 0; color: var(--muted); line-height: 1.55; }
+.privacy { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: rgba(70, 224, 162, 0.06); border: 1px solid rgba(70, 224, 162, 0.2); color: #cdf5e4; font-size: 13px; line-height: 1.45; }
+.privacy svg { width: 18px; height: 18px; flex: none; margin-top: 1px; fill: none; stroke: var(--live); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.gesture-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 12.5px; }
+.gesture-list dt { font-family: var(--mono); font-size: 11.5px; color: var(--fg); }
+.gesture-list dd { margin: 0; color: var(--muted); }
+.dialog .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.dialog .tool { height: 42px; padding: 0 18px; font-size: 13px; }
+.dialog .error { color: #ffc2c2; }
+
+#calib { pointer-events: none; background: rgba(2, 3, 8, 0.45); }
+#calib .dialog { text-align: center; justify-items: center; }
+.calib-ring { width: 64px; height: 64px; }
+.calib-ring circle { fill: none; stroke-width: 3; }
+.calib-ring .track { stroke: rgba(255, 255, 255, 0.1); }
+.calib-ring .bar { stroke: var(--live); stroke-dasharray: 182.2; stroke-dashoffset: calc(182.2 * (1 - var(--p, 0))); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
+
+/* ---------- Loader ---------- */
+#loader {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  background: radial-gradient(800px 500px at 50% 45%, rgba(92, 110, 255, 0.12), transparent 70%), var(--bg);
+  transition: opacity 0.8s var(--ease-out);
+}
+#loader.done { opacity: 0; pointer-events: none; }
+.loader-inner { display: grid; justify-items: center; gap: 14px; text-align: center; padding: 24px; }
+.loader-inner h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.24em; }
+.loader-inner p { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.loader-bar { width: 180px; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.loader-bar i { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--violet), var(--orange)); animation: load 1.3s var(--ease-in-out) infinite; }
+@keyframes load { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+#loader.error .loader-bar { display: none; }
+#loader.error p { color: #ffc2c2; max-width: 380px; line-height: 1.55; font-family: var(--display); font-size: 14px; }
+
+@media (max-width: 720px) {
+  .title { top: calc(max(12px, env(safe-area-inset-top, 0px)) + 40px); left: 16px; }
+  .title h1 { font-size: 11px; }
+  .title p { font-size: 11px; }
+  .tool span.lbl { display: none; }
+  .keys { display: none; }
+  #info { left: 12px; right: 12px; width: auto; bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+  #caption { bottom: max(12px, env(safe-area-inset-bottom, 0px)); padding: 14px; }
+  .cap-text { font-size: 15px; }
+  .cap-chip { margin-left: 0; }
+  #pip { width: 132px; top: calc(max(12px, env(safe-area-inset-top, 0px)) + 44px); right: 12px; bottom: auto; }
+  .pip-status { grid-template-columns: auto 1fr; padding: 6px 8px; font-size: 11px; }
+  .pip-status .mono, .pip-msg { display: none; }
+  #groupLabel { width: auto; }
+  body[data-mode="transfer"] .title h1, body[data-mode="transfer"] .title p { display: none; }
+  #hint { white-space: normal; text-align: center; border-radius: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notch, .notch-panel, .fade-card, #toast { transition-duration: 0.01s !important; transition-delay: 0s !important; }
+  .status-dot { animation: none !important; }
+  .loader-bar i { animation-duration: 3s; }
+}
+</style>
+<!-- libs:start -->
+<script>
+  // Served over http(s) (the launcher, or a website), load the bundled copies in vendor/ so the lab works offline.
+  // Opened straight from disk, the browser refuses local modules, so fall back to the CDN.
+  window.__labLocal = location.protocol !== 'file:';
+  (function () {
+    var base = window.__labLocal ? new URL('vendor/three/', location.href).href : 'https://unpkg.com/three@0.170.0/';
+    var map = document.createElement('script');
+    map.type = 'importmap';
+    map.textContent = JSON.stringify({ imports: { three: base + 'build/three.module.js', 'three/addons/': base + 'examples/jsm/' } });
+    document.currentScript.after(map);
+  })();
+</script>
+<!-- libs:end -->
+</head>
+<body>
+<canvas id="scene" tabindex="0" aria-label="3D model of aspirin. Drag to rotate, scroll to zoom, click an atom to inspect it."></canvas>
+<div class="vignette"></div>
+<svg id="leaders" aria-hidden="true"><line id="leaderLine" x1="0" y1="0" x2="0" y2="0" stroke-width="1.2" opacity="0"/><circle id="leaderDot" r="3.5" opacity="0"/></svg>
+<div id="tags" aria-hidden="true"></div>
+
+<header class="title">
+  <h1>Aspirin<span>:</span> Molecular Action</h1>
+  <p>Acetylsalicylic acid · C₉H₈O₄</p>
+  <span class="badge" id="eduBadge" hidden>Simplified educational representation</span>
+</header>
+
+<nav class="notch" id="notch" data-open="false" aria-label="Aspirin Lab controls">
+  <button class="notch-face" id="notchFace" type="button" aria-expanded="false" aria-controls="notchPanel">
+    <span class="lens" aria-hidden="true"></span>
+    <span id="notchLabel">ASPIRIN LAB</span>
+    <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+  </button>
+  <div class="notch-panel" id="notchPanel">
+    <div class="modes" role="tablist" aria-label="Mode">
+      <button type="button" role="tab" data-mode="explore" aria-selected="true">EXPLORE</button>
+      <button type="button" role="tab" data-mode="groups" aria-selected="false">FUNCTIONAL GROUPS</button>
+      <button type="button" role="tab" data-mode="transfer" aria-selected="false">ACETYL TRANSFER</button>
+    </div>
+
+    <div class="row" data-for="explore">
+      <p class="row-note">Click any atom or bond to inspect it. <span class="mono">21 atoms · 9 C · 8 H · 4 O</span></p>
+    </div>
+    <div class="row" data-for="groups" hidden>
+      <button class="chip" type="button" data-group="ring" style="--c:#8b7bff" aria-pressed="true"><i></i>Aromatic ring</button>
+      <button class="chip" type="button" data-group="acid" style="--c:#45e0ea" aria-pressed="false"><i></i>Carboxylic acid</button>
+      <button class="chip" type="button" data-group="ester" style="--c:#ff9a3c" aria-pressed="false"><i></i>Ester + acetyl</button>
+    </div>
+    <div class="row" data-for="transfer" hidden>
+      <button class="tool" type="button" id="btnRestart" title="Restart"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg><span class="lbl">Restart</span></button>
+      <button class="tool" type="button" id="btnPrev" aria-label="Previous stage" title="Previous stage ([)"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button class="tool primary" type="button" id="btnPlay" aria-label="Pause" title="Play or pause (Space)"><svg viewBox="0 0 24 24" id="playIcon"><path d="M9 6v12M15 6v12"/></svg><span class="lbl" id="playText">Pause</span></button>
+      <button class="tool" type="button" id="btnNext" aria-label="Next stage" title="Next stage (])"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      <span class="spacer"></span>
+      <div class="seg" role="group" aria-label="Animation speed">
+        <button type="button" data-speed="0.5" aria-pressed="false">0.5×</button>
+        <button type="button" data-speed="1" aria-pressed="true">1×</button>
+        <button type="button" data-speed="2" aria-pressed="false">2×</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <button class="tool" type="button" id="btnRotate" aria-pressed="true" title="Auto-rotation"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg><span class="lbl">Auto-rotate</span></button>
+      <button class="tool" type="button" id="btnReset" title="Reset view (R)"><svg viewBox="0 0 24 24"><path d="M3 12h3M18 12h3M12 3v3M12 18v3"/><circle cx="12" cy="12" r="4"/></svg><span class="lbl">Reset</span></button>
+      <div class="seg" role="group" aria-label="Model style">
+        <button type="button" data-style="ball" aria-pressed="true">Ball &amp; stick</button>
+        <button type="button" data-style="space" aria-pressed="false">Space-filling</button>
+      </div>
+      <button class="tool" type="button" id="btnH" aria-pressed="true" title="Show hydrogens (H)"><span class="mono" aria-hidden="true">H</span><span class="lbl">Hydrogens</span></button>
+      <span class="spacer"></span>
+      <button class="tool" type="button" id="btnHands" aria-pressed="false" title="Hand tracking (G)"><svg viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.3-5.5-3.5L4 13.8a1.4 1.4 0 0 1 2.3-1.6L8 14"/></svg><span class="lbl">Hands</span></button>
+      <button class="tool" type="button" id="btnFull" aria-label="Fullscreen" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+
+    <div class="hands-row" id="handsRow" hidden>
+      <div class="row">
+        <span class="live-dot" id="handsDot"></span>
+        <span id="handsStatus">Starting camera…</span>
+        <span class="mono" id="handsGesture" style="color:var(--live)"></span>
+        <span class="spacer"></span>
+        <span class="mono" id="handsFps" style="color:var(--dim)"></span>
+      </div>
+      <div class="row">
+        <label class="range" for="sens">Sensitivity <input type="range" id="sens" min="0.5" max="2" step="0.1" value="1"></label>
+        <span class="spacer"></span>
+        <button class="tool" type="button" id="btnCalib">Calibrate</button>
+        <button class="tool" type="button" id="btnCamOff">Turn off camera</button>
+      </div>
+    </div>
+
+    <p class="keys"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> modes · <kbd>Space</kbd> play/pause · <kbd>[</kbd><kbd>]</kbd> stage or group · <kbd>R</kbd> reset · <kbd>M</kbd> model · <kbd>H</kbd> hydrogens · <kbd>Esc</kbd> deselect</p>
+  </div>
+</nav>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<aside class="card fade-card off" id="info" aria-live="polite">
+  <div class="info-head">
+    <span class="el-tile" id="infoTile">O</span>
+    <div><h2 id="infoName">Oxygen</h2><p id="infoSub">Atom 11 of 21</p></div>
+    <button class="icon-btn" type="button" id="infoClose" aria-label="Close details"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <span class="pill" id="infoGroup"><i></i><span></span></span>
+  <div id="infoBondsWrap"><div class="info-label" id="infoBondsLabel">Bonds</div><ul class="bond-list" id="infoBonds"></ul></div>
+  <p class="info-text" id="infoText"></p>
+</aside>
+
+<div class="card fade-card off" id="groupLabel" aria-live="polite"><h3 id="groupName"></h3><p id="groupText"></p></div>
+
+<section class="card fade-card off" id="caption" aria-live="polite">
+  <div class="cap-top">
+    <span class="cap-stage" id="capStage">Stage 1 of 5</span>
+    <span class="cap-title" id="capTitle">Approach</span>
+    <span class="cap-chip" id="capChip" hidden>Covalent · effectively irreversible</span>
+  </div>
+  <p class="cap-text" id="capText"></p>
+  <div class="medical" id="medical" hidden>
+    <b>Medical connection</b>
+    <p>Lower prostaglandin production helps reduce pain, fever, and inflammation. Reduced thromboxane production decreases platelet aggregation.</p>
+  </div>
+  <div class="cap-nav">
+    <button class="icon-btn" type="button" id="capPrev" aria-label="Previous stage"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div class="dots" id="dots"></div>
+    <button class="icon-btn" type="button" id="capNext" aria-label="Next stage"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</section>
+
+<div class="card fade-card" id="hint">Drag to rotate · Scroll to zoom · Click an atom</div>
+
+<aside class="card fade-card off" id="pip" aria-label="Hand tracking camera">
+  <div class="pip-video"><video id="handVideo" playsinline muted></video><canvas id="pipCanvas"></canvas></div>
+  <div class="pip-status">
+    <span class="live-dot" id="pipDot"></span>
+    <span id="pipText">Starting camera…</span>
+    <span class="mono" id="pipFps"></span>
+  </div>
+  <div class="pip-msg" id="pipGesture">Processed on this device</div>
+</aside>
+
+<div id="handCursor" hidden><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24"/></svg><div class="ring"></div><div class="dot"></div></div>
+
+<div class="overlay" id="consent" role="dialog" aria-modal="true" aria-labelledby="consentTitle" hidden>
+  <div class="card dialog">
+    <h2 id="consentTitle">Hand controls</h2>
+    <p>Control the molecule by moving your hands in front of your webcam.</p>
+    <div class="privacy"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Video is processed locally in your browser and is not uploaded.</span></div>
+    <dl class="gesture-list">
+      <dt>Open hand</dt><dd>Move to rotate · hold still to pause</dd>
+      <dt>Point</dt><dd>Highlight an atom</dd>
+      <dt>Pinch</dt><dd>Select · pinch and move to rotate</dd>
+      <dt>Two pinches</dt><dd>Move apart or together to zoom</dd>
+      <dt>Swipe</dt><dd>Change mode or reaction stage</dd>
+      <dt>Fist (hold)</dt><dd>Reset the view</dd>
+    </dl>
+    <p class="error" id="consentError" hidden></p>
+    <div class="actions">
+      <button class="tool" type="button" id="consentCancel">Not now</button>
+      <button class="tool primary" type="button" id="consentOk">ENABLE HAND CONTROLS</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="calib" hidden>
+  <div class="card dialog">
+    <svg class="calib-ring" id="calibRing" viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="29"/><circle class="bar" cx="32" cy="32" r="29"/></svg>
+    <h2>Calibrating</h2>
+    <p id="calibText">Hold an open hand still, where it feels comfortable to work.</p>
+  </div>
+</div>
+
+<div id="loader" role="status">
+  <div class="loader-inner">
+    <h1>ASPIRIN: MOLECULAR ACTION</h1>
+    <div class="loader-bar"><i></i></div>
+    <p id="loaderText">Loading the molecular engine…</p>
+  </div>
+</div>
+
+<script>
+  // Runs even if the 3D module never loads (offline, blocked CDN).
+  window.__labFail = function (msg) {
+    var l = document.getElementById('loader');
+    l.classList.remove('done');
+    l.classList.add('error');
+    document.getElementById('loaderText').textContent = msg;
+  };
+  window.__labTimer = setTimeout(function () {
+    if (!window.__labReady) window.__labFail('The 3D engine did not load. Check your internet connection, then reload the page.');
+  }, 20000);
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const seg = (u, a, b) => clamp((u - a) / (b - a), 0, 1);
+const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
+const ease = {
+  inOut: (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
+  out: (x) => 1 - Math.pow(1 - x, 3),
+  in: (x) => x * x * x,
+};
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const AX_X = V(1, 0, 0), AX_Y = V(0, 1, 0), AX_Z = V(0, 0, 1);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarse = matchMedia('(pointer: coarse)').matches;
+const _v1 = V(), _v2 = V(), _v3 = V(), _v4 = V(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+
+/* ============================================================
+   Chemistry data — PubChem CID 2244, MMFF94-optimised 3D conformer (Å)
+   ============================================================ */
+
+const SDF = {
+  1: [1.2333, 0.5540, 0.7792], 2: [-0.6952, -2.7148, -0.7502], 3: [0.7958, -2.1843, 0.8685], 4: [1.7813, 0.8105, -1.4821],
+  5: [-0.0857, 0.6088, 0.4403], 6: [-0.7927, -0.5515, 0.1244], 7: [-0.7288, 1.8464, 0.4133], 8: [-2.1426, -0.4741, -0.2184],
+  9: [-2.0787, 1.9238, 0.0706], 10: [-2.7855, 0.7636, -0.2453], 11: [-0.1409, -1.8536, 0.1477], 12: [2.1094, 0.6715, -0.3113],
+  13: [3.5305, 0.5996, 0.1635], 14: [-0.1851, 2.7545, 0.6593], 15: [-2.7247, -1.3605, -0.4564], 16: [-2.5797, 2.8872, 0.0506],
+  17: [-3.8374, 0.8238, -0.5090], 18: [3.7290, 1.4184, 0.8593], 19: [4.2045, 0.6969, -0.6924], 20: [3.7105, -0.3659, 0.6426],
+  21: [-0.2555, -3.5916, -0.7337],
+};
+
+const ELEMENTS = {
+  C: { name: 'Carbon', color: 0x3c4049, css: '#5b606c', bs: 0.34, vdw: 1.7 },
+  O: { name: 'Oxygen', color: 0xd92e36, css: '#e2333b', bs: 0.31, vdw: 1.52 },
+  H: { name: 'Hydrogen', color: 0xd7dae2, css: '#e6e8ee', bs: 0.21, vdw: 1.1 },
+  N: { name: 'Nitrogen', color: 0x3d66ff, css: '#3d66ff', bs: 0.32, vdw: 1.55 },
+};
+
+const GROUPS = {
+  ring: { name: 'Aromatic benzene ring', color: 0x8b7bff, css: '#8b7bff', text: 'Provides a stable, mostly non-polar region that helps aspirin interact with the enzyme’s hydrophobic channel.' },
+  acid: { name: 'Carboxylic acid group', color: 0x45e0ea, css: '#45e0ea', text: 'Can lose H⁺ and form ionic or hydrogen-bonding interactions near the cyclooxygenase active site.' },
+  ester: { name: 'Ester and acetyl group', color: 0xff9a3c, css: '#ff9a3c', text: 'Contains the acetyl group that aspirin transfers to a serine amino acid in cyclooxygenase.' },
+};
+const GROUP_ORDER = ['ring', 'acid', 'ester'];
+
+const RING_C = 'Carbon in the aromatic ring. Its delocalised electrons make this flat region stable and mostly non-polar.';
+const ATOM_DEFS = [
+  { n: 1, el: 'C', label: 'C1', sdf: 6, group: 'ring', text: 'Carbon in the aromatic ring. It anchors the carboxylic acid group to the ring.' },
+  { n: 2, el: 'C', label: 'C2', sdf: 5, group: 'ring', text: 'Carbon in the aromatic ring. It is bonded to the ester oxygen that links the acetyl group to the ring.' },
+  { n: 3, el: 'C', label: 'C3', sdf: 7, group: 'ring', text: RING_C },
+  { n: 4, el: 'C', label: 'C4', sdf: 9, group: 'ring', text: RING_C },
+  { n: 5, el: 'C', label: 'C5', sdf: 10, group: 'ring', text: RING_C },
+  { n: 6, el: 'C', label: 'C6', sdf: 8, group: 'ring', text: RING_C },
+  { n: 7, el: 'C', label: 'C7', sdf: 11, group: 'acid', text: 'The carboxylic acid carbon. It holds one C=O and one O–H, which make up aspirin’s acidic group.' },
+  { n: 8, el: 'O', label: 'O1', sdf: 3, group: 'acid', text: 'Carbonyl oxygen of the carboxylic acid. It can accept hydrogen bonds near the active site.' },
+  { n: 9, el: 'O', label: 'O2', sdf: 2, group: 'acid', text: 'Hydroxyl oxygen of the carboxylic acid. Once it loses H⁺, the negative carboxylate can pair with Arg120 in the enzyme.' },
+  { n: 10, el: 'H', label: 'H1', sdf: 21, group: 'acid', text: 'The acidic hydrogen. Aspirin releases it as H⁺, which makes aspirin a weak acid (pKa ≈ 3.5).' },
+  { n: 11, el: 'O', label: 'O3', sdf: 1, group: 'ester', text: 'Ester oxygen linking the ring to the acetyl group. Its bond to C8 breaks during acetyl transfer, and O3 stays with salicylate.' },
+  { n: 12, el: 'C', label: 'C8', sdf: 12, group: 'ester', acetyl: true, text: 'The acetyl carbonyl carbon. It is partly positive, so the oxygen of Ser530 attacks it during acetyl transfer.' },
+  { n: 13, el: 'O', label: 'O4', sdf: 4, group: 'ester', acetyl: true, text: 'Oxygen — part of aspirin’s ester group. This area contains the acetyl group that aspirin transfers to cyclooxygenase.' },
+  { n: 14, el: 'C', label: 'C9', sdf: 13, group: 'ester', acetyl: true, text: 'The methyl carbon of the acetyl group (CH₃). It travels with the acetyl group to Ser530.' },
+  { n: 15, el: 'H', label: 'H2', sdf: 18, group: 'ester', acetyl: true, text: 'Hydrogen on the acetyl methyl group. It moves to the enzyme along with the acetyl group.' },
+  { n: 16, el: 'H', label: 'H3', sdf: 19, group: 'ester', acetyl: true, text: 'Hydrogen on the acetyl methyl group. It moves to the enzyme along with the acetyl group.' },
+  { n: 17, el: 'H', label: 'H4', sdf: 20, group: 'ester', acetyl: true, text: 'Hydrogen on the acetyl methyl group. It moves to the enzyme along with the acetyl group.' },
+  { n: 18, el: 'H', label: 'H5', sdf: 14, group: 'ring', text: 'Hydrogen on the aromatic ring. These C–H bonds keep the ring region non-polar.' },
+  { n: 19, el: 'H', label: 'H6', sdf: 16, group: 'ring', text: 'Hydrogen on the aromatic ring. These C–H bonds keep the ring region non-polar.' },
+  { n: 20, el: 'H', label: 'H7', sdf: 17, group: 'ring', text: 'Hydrogen on the aromatic ring. These C–H bonds keep the ring region non-polar.' },
+  { n: 21, el: 'H', label: 'H8', sdf: 15, group: 'ring', text: 'Hydrogen on the aromatic ring. These C–H bonds keep the ring region non-polar.' },
+];
+
+// [atom, atom, order]; 'ar' = aromatic ring bond
+const BOND_DEFS = [
+  [11, 2, 1], [11, 12, 1, 'ester'], [9, 7, 1], [9, 10, 1], [8, 7, 2], [13, 12, 2],
+  [2, 1, 'ar'], [2, 3, 'ar'], [1, 6, 'ar'], [3, 4, 'ar'], [6, 5, 'ar'], [4, 5, 'ar'],
+  [1, 7, 1], [3, 18, 1], [6, 21, 1], [4, 19, 1], [5, 20, 1],
+  [12, 14, 1], [14, 15, 1], [14, 16, 1], [14, 17, 1],
+];
+
+const BOND_INFO = {
+  1: ['Single covalent bond', 'One shared pair of electrons.'],
+  2: ['Double covalent bond', 'Two shared pairs of electrons: one σ bond and one π bond.'],
+  ar: ['Aromatic bond', 'Part of the ring’s delocalised π system, so each ring bond behaves like a 1.5 bond.'],
+};
+
+const STAGES = [
+  { title: 'Approach', text: 'Aspirin enters the cyclooxygenase active site.' },
+  { title: 'Orientation', text: 'The active site positions aspirin’s acetyl group close to Ser530.' },
+  { title: 'Acetyl transfer', text: 'Aspirin covalently acetylates Ser530.' },
+  { title: 'Products', text: 'Salicylate leaves while the acetyl group remains attached to the enzyme.' },
+  { title: 'Enzyme effect', text: 'Acetylation reduces cyclooxygenase activity and decreases prostaglandin and thromboxane production.' },
+];
+const DUR = [5, 4.5, 6, 5, 8];
+const HOLD = 1.4;
+const STARTS = [];
+let T_TOTAL = 0;
+for (const d of DUR) { STARTS.push(T_TOTAL); T_TOTAL += d + HOLD; }
+
+const COL = {
+  select: new THREE.Color(0x8fe8ff),
+  hover: new THREE.Color(0xb8c6ff),
+  acetyl: new THREE.Color(0xff8a2a),
+  ser: new THREE.Color(0x5ce1c6),
+  red: new THREE.Color(0xff3b3b),
+  arg: new THREE.Color(0x4f8bff),
+  tyr: new THREE.Color(0xa58bff),
+  substrate: new THREE.Color(0xe8b04a),
+  black: new THREE.Color(0x000000),
+};
+
+/* ============================================================
+   Renderer, scene, post-processing
+   ============================================================ */
+
+const canvas = $('scene');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+} catch (err) {
+  window.__labFail('This browser could not start WebGL 3D graphics. Try the latest Chrome, Edge or Safari, and make sure hardware acceleration is on.');
+  throw err;
+}
+const pixelRatio = () => Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(pixelRatio());
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 900);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+
+const composerTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, composerTarget);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.45, 0.92);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+function resize() {
+  const w = innerWidth, h = innerHeight, pr = pixelRatio();
+  renderer.setPixelRatio(pr);
+  renderer.setSize(w, h);
+  composer.setPixelRatio(pr);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  measureNotch();
+}
+addEventListener('resize', resize);
+
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  window.__labFail('The graphics card stopped responding. Reload the page to restart the 3D model.');
+});
+
+// Lights: one cool key for form, blue and violet rims for the cinematic edge.
+const key = new THREE.DirectionalLight(0xe2e8ff, 1.45);
+key.position.set(5, 8, 7);
+const rimBlue = new THREE.DirectionalLight(0x5c7cff, 2.4);
+rimBlue.position.set(-7, 2, -6);
+const rimViolet = new THREE.DirectionalLight(0xa070ff, 1.7);
+rimViolet.position.set(7, -3, -5);
+scene.add(key, rimBlue, rimViolet, new THREE.HemisphereLight(0x8090ff, 0x0a0812, 0.35));
+
+// Background dome: deep navy with soft blue and violet glows.
+const dome = new THREE.Mesh(
+  new THREE.SphereGeometry(400, 48, 24),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      cTop: { value: new THREE.Color(0x070b1d) },
+      cBottom: { value: new THREE.Color(0x010103) },
+      cA: { value: new THREE.Color(0x2a3a9a) },
+      cB: { value: new THREE.Color(0x4a2a8a) },
+    },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `precision mediump float;
+      varying vec3 vDir; uniform vec3 cTop; uniform vec3 cBottom; uniform vec3 cA; uniform vec3 cB;
+      void main(){
+        float h = vDir.y * 0.5 + 0.5;
+        vec3 col = mix(cBottom, cTop, smoothstep(0.15, 0.95, h));
+        col += cA * pow(max(dot(vDir, normalize(vec3(-0.55, 0.45, -0.7))), 0.0), 5.0) * 0.18;
+        col += cB * pow(max(dot(vDir, normalize(vec3(0.75, -0.15, -0.65))), 0.0), 7.0) * 0.16;
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  })
+);
+scene.add(dome);
+
+function radialTexture(stops) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  for (const [o, col] of stops) grad.addColorStop(o, col);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const softTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.45)'], [1, 'rgba(255,255,255,0)']]);
+const ringTex = radialTexture([[0, 'rgba(255,255,255,0)'], [0.62, 'rgba(255,255,255,0)'], [0.78, 'rgba(255,255,255,1)'], [0.9, 'rgba(255,255,255,0.25)'], [1, 'rgba(255,255,255,0)']]);
+
+// Ambient particles: slow drift in a shell around the scene.
+const particles = (() => {
+  const n = coarse ? 380 : 700;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 28 + Math.random() * 70;
+    const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+    arr[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    arr[i * 3 + 1] = r * Math.cos(ph) * 0.7;
+    arr[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 0.32, map: softTex, color: 0x8ea0ff, transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  scene.add(pts);
+  return pts;
+})();
+
+// Faint benzene silhouettes floating far behind the scene.
+const hexes = new THREE.Group();
+for (let i = 0; i < 9; i++) {
+  const pts = [];
+  for (let k = 0; k <= 6; k++) pts.push(V(Math.cos((k / 6) * Math.PI * 2) * 2.6, Math.sin((k / 6) * Math.PI * 2) * 2.6, 0));
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7f8cff, transparent: true, opacity: 0.035 + Math.random() * 0.03 }));
+  const a = (i / 9) * Math.PI * 2 + Math.random() * 0.4;
+  line.position.set(Math.cos(a) * (80 + Math.random() * 25), (Math.random() - 0.5) * 60, -60 + Math.sin(a) * 30);
+  line.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+  line.userData.spin = (Math.random() - 0.5) * 0.12;
+  hexes.add(line);
+}
+scene.add(hexes);
+
+// A soft pool of light under the molecule, like an exhibit plinth.
+const plinth = new THREE.Mesh(
+  new THREE.PlaneGeometry(26, 26),
+  new THREE.MeshBasicMaterial({ map: softTex, color: 0x3f4fd0, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending })
+);
+plinth.rotation.x = -Math.PI / 2;
+plinth.position.y = -7.5;
+scene.add(plinth);
+
+/* ============================================================
+   Molecule construction
+   ============================================================ */
+
+const root = new THREE.Group();     // user rotation; the reaction stage frame
+scene.add(root);
+const aspirinG = new THREE.Group(); // salicylate part of aspirin
+const acetylG = new THREE.Group();  // acetyl group, posed separately so it can move to Ser530
+const enzymeG = new THREE.Group();  // channel, helices, residues
+const aaG = new THREE.Group();      // arachidonic acid
+root.add(aspirinG, acetylG, enzymeG, aaG);
+const ownGroups = [aspirinG, acetylG, aaG];
+
+const sphereGeo = new THREE.SphereGeometry(1, 40, 28);
+const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false);
+const pickMat = new THREE.MeshBasicMaterial({ visible: false });
+const makeMat = (color, extra = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.32, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.25, ...extra });
+
+const atoms = [];
+const bonds = [];
+
+function addAtom(parent, el, local, info = {}) {
+  const mat = makeMat(ELEMENTS[el].color);
+  const mesh = new THREE.Mesh(sphereGeo, mat);
+  mesh.position.copy(local);
+  parent.add(mesh);
+  const rec = {
+    mesh, mat, el, parent, kind: 'aspirin', base: new THREE.Color(ELEMENTS[el].color),
+    glow: 0, glowT: 0, gc: new THREE.Color(0), gcT: new THREE.Color(0),
+    op: 1, opT: 1, sc: ELEMENTS[el].bs, scT: ELEMENTS[el].bs,
+    ...info,
+  };
+  mesh.userData.atom = rec;
+  atoms.push(rec);
+  return rec;
+}
+
+function addBond(a, b, order, extra = {}) {
+  const rec = {
+    a, b, order, vis: 1, visT: 1,
+    glow: 0, glowT: 0, gc: new THREE.Color(0), gcT: new THREE.Color(0),
+    halves: [], dashes: [], ring: null, ref: null, pick: null,
+    ...extra,
+  };
+  const lines = order === 2 ? 2 : 1;
+  for (let l = 0; l < lines; l++) {
+    for (const atom of [a, b]) {
+      const mat = makeMat(ELEMENTS[atom.el].color, { roughness: 0.38 });
+      const mesh = new THREE.Mesh(cylGeo, mat);
+      root.add(mesh);
+      rec.halves.push({ mesh, mat, atom, line: l, base: new THREE.Color(ELEMENTS[atom.el].color) });
+    }
+  }
+  if (order === 'ar') {
+    rec.dashMat = makeMat(0x8a91a3, { roughness: 0.45 });
+    for (let i = 0; i < 3; i++) {
+      const mesh = new THREE.Mesh(cylGeo, rec.dashMat);
+      root.add(mesh);
+      rec.dashes.push(mesh);
+    }
+  }
+  if (extra.pickable) {
+    rec.pick = new THREE.Mesh(cylGeo, pickMat);
+    rec.pick.userData.bond = rec;
+    root.add(rec.pick);
+  }
+  bonds.push(rec);
+  return rec;
+}
+
+// Aspirin, centred on its centroid.
+const centroid = V();
+for (const d of ATOM_DEFS) centroid.add(V(...SDF[d.sdf]));
+centroid.divideScalar(ATOM_DEFS.length);
+const molPos = {};
+for (const d of ATOM_DEFS) molPos[d.n] = V(...SDF[d.sdf]).sub(centroid);
+
+const A = {};
+for (const d of ATOM_DEFS) {
+  A[d.n] = addAtom(d.acetyl ? acetylG : aspirinG, d.el, molPos[d.n], { ...d, kind: 'aspirin' });
+}
+const aspirinAtoms = ATOM_DEFS.map((d) => A[d.n]);
+const RING = [1, 2, 3, 4, 5, 6].map((n) => A[n]);
+
+const aspirinBonds = [];
+for (const [i, j, order, tag] of BOND_DEFS) {
+  const extra = { pickable: true, aspirin: true };
+  if (order === 'ar') extra.ring = RING;
+  if (order === 2) extra.ref = i === 8 ? A[9] : A[14]; // a neighbour that fixes the plane of the double bond
+  if (tag === 'ester') extra.ester = true;
+  aspirinBonds.push(addBond(A[i], A[j], order, extra));
+}
+const esterBond = aspirinBonds.find((b) => b.ester);
+
+/* ---------- Geometry derived for the reaction ---------- */
+
+const ringCentroidMol = RING.reduce((s, r) => s.add(r.mesh.position), V()).divideScalar(6);
+const ringNormalMol = V().subVectors(molPos[1], molPos[2]).cross(V().subVectors(molPos[3], molPos[2])).normalize();
+
+// Ser530's oxygen sits off the non-methyl face of the ring, so that after a straight transfer
+// the acetyl group bonds to it with the same geometry it had in aspirin's ester.
+const bEster = V().subVectors(molPos[12], molPos[11]).normalize();
+const nFace = ringNormalMol.clone();
+if (nFace.dot(V().subVectors(molPos[14], ringCentroidMol)) > 0) nFace.negate();
+const dMol = nFace.sub(bEster.clone().multiplyScalar(nFace.dot(bEster))).normalize().multiplyScalar(2.8);
+
+// Bound orientation: the transfer direction points to the back-right wall, the carboxylate points down the channel.
+const qBound = (() => {
+  const e1 = dMol.clone().normalize();
+  const cdir = molPos[7].clone();
+  const e2 = cdir.sub(e1.clone().multiplyScalar(cdir.dot(e1))).normalize();
+  const e3 = V().crossVectors(e1, e2);
+  const f1 = V(0.74, 0, -0.67).normalize();
+  const f2 = V(0, -1, 0);
+  const f3 = V().crossVectors(f1, f2);
+  const mE = new THREE.Matrix4().makeBasis(e1, e2, e3);
+  const mF = new THREE.Matrix4().makeBasis(f1, f2, f3);
+  return new THREE.Quaternion().setFromRotationMatrix(mF.multiply(mE.transpose()));
+})();
+const toBound = (molVec) => molVec.clone().applyQuaternion(qBound);
+const dStage = toBound(dMol);
+const boundPos = (n) => toBound(molPos[n]);
+
+// Ser530 side chain (stage frame).
+const OG = boundPos(11).add(dStage);
+const cbDirMol = (() => {
+  const v = V().subVectors(molPos[2], molPos[11]);
+  const par = bEster.clone().multiplyScalar(v.dot(bEster));
+  const perpLen = v.clone().sub(par).length();
+  return par.add(dMol.clone().normalize().multiplyScalar(perpLen)).normalize();
+})();
+const CB = OG.clone().add(toBound(cbDirMol).multiplyScalar(1.43));
+const radialOut = (p) => V(p.x, 0, p.z).normalize();
+const CA = (() => {
+  const u = V().subVectors(OG, CB).normalize();
+  const r = radialOut(CB);
+  const w = r.sub(u.clone().multiplyScalar(u.dot(r))).normalize();
+  return CB.clone().add(u.multiplyScalar(-0.358).add(w.multiplyScalar(0.934)).multiplyScalar(1.53));
+})();
+const serN = CA.clone().add(V(0, 1, 0).add(radialOut(CA).multiplyScalar(0.35)).normalize().multiplyScalar(1.46));
+const serC = CA.clone().add(V(0, -1, 0).add(radialOut(CA).multiplyScalar(0.35)).normalize().multiplyScalar(1.52));
+const hgSerPos = OG.clone().add(V().subVectors(boundPos(11), OG).normalize().multiplyScalar(0.45).add(V(0, 0.9, 0)).normalize().multiplyScalar(0.96));
+const hgSalLocal = molPos[11].clone().add(dMol.clone().normalize().add(V().subVectors(molPos[11], molPos[2]).normalize()).normalize().multiplyScalar(0.96));
+
+const acetylFinal = (n) => boundPos(n).add(dStage);
+const acetylCentroidFinal = [12, 13, 14].reduce((s, n) => s.add(acetylFinal(n)), V()).divideScalar(3);
+
+// Arg120: guanidinium below the carboxylate, both NH groups pointing up at its oxygens.
+const argAtoms = (() => {
+  const o1 = boundPos(8), o2 = boundPos(9), c7 = boundPos(7);
+  const m = o1.clone().add(o2).multiplyScalar(0.5);
+  const c = V().subVectors(m, c7).normalize();
+  const t = V().subVectors(o1, o2);
+  t.sub(c.clone().multiplyScalar(t.dot(c))).normalize();
+  const CZ = m.clone().add(c.clone().multiplyScalar(3.55));
+  const NH1 = CZ.clone().add(c.clone().multiplyScalar(-0.5).add(t.clone().multiplyScalar(0.866)).multiplyScalar(1.33));
+  const NH2 = CZ.clone().add(c.clone().multiplyScalar(-0.5).add(t.clone().multiplyScalar(-0.866)).multiplyScalar(1.33));
+  const NE = CZ.clone().add(c.clone().multiplyScalar(1.33));
+  const chainDir = c.clone().add(V(-0.75, 0, 0.25)).normalize();
+  const side = V().crossVectors(chainDir, AX_Z).normalize();
+  const chain = [NE];
+  for (let k = 1; k <= 4; k++) {
+    chain.push(NE.clone().add(chainDir.clone().multiplyScalar(1.28 * k)).add(side.clone().multiplyScalar(k % 2 ? 0.45 : 0)));
+  }
+  return { CZ, NH1, NH2, NE, CD: chain[1], CG: chain[2], CB: chain[3], CA: chain[4], o1, o2 };
+})();
+
+// Tyr385: phenol ring hanging from the roof of the channel, its OH pointing at the catalytic centre.
+const tyrAtoms = (() => {
+  const OH = acetylCentroidFinal.clone().add(V(-1.8, 4.6, -1.4));
+  const CZ = OH.clone().add(V(0, 1.36, 0));
+  const e = V(0.85, 0, 0.5).normalize();
+  const center = CZ.clone().add(V(0, 1.39, 0));
+  const ring = [];
+  for (let k = 0; k < 6; k++) {
+    const th = -Math.PI / 2 + (k * Math.PI) / 3;
+    ring.push(center.clone().add(e.clone().multiplyScalar(Math.cos(th) * 1.39)).add(V(0, Math.sin(th) * 1.39, 0)));
+  }
+  const CG = ring[3];
+  const CB = CG.clone().add(V(-0.3, 1.45, -0.35));
+  const CAt = CB.clone().add(V(-0.9, 0.6, -1.0));
+  return { OH, ring, CB, CA: CAt, center };
+})();
+
+/* ---------- Enzyme: residues ---------- */
+
+const serG = new THREE.Group();
+const argG = new THREE.Group();
+const tyrG = new THREE.Group();
+enzymeG.add(serG, argG, tyrG);
+const residueAtoms = { ser: [], arg: [], tyr: [] };
+const resAtom = (group, key, el, p, extra = {}) => {
+  const r = addAtom(group, el, p, { kind: 'residue', residue: key, ...extra });
+  residueAtoms[key].push(r);
+  return r;
+};
+
+const S = {
+  N: resAtom(serG, 'ser', 'N', serN), CA: resAtom(serG, 'ser', 'C', CA), C: resAtom(serG, 'ser', 'C', serC),
+  CB: resAtom(serG, 'ser', 'C', CB, { side: true }), OG: resAtom(serG, 'ser', 'O', OG, { side: true }),
+};
+const HG = addAtom(root, 'H', hgSerPos, { kind: 'residue', residue: 'ser', side: true, hg: true });
+residueAtoms.ser.push(HG);
+for (const [a, b] of [['N', 'CA'], ['CA', 'C'], ['CA', 'CB'], ['CB', 'OG']]) addBond(S[a], S[b], 1, { residue: 'ser' });
+const serOHBond = addBond(S.OG, HG, 1, { residue: 'ser' });
+const salOHBond = addBond(A[11], HG, 1, { visT: 0, vis: 0 });
+const newBond = addBond(S.OG, A[12], 1, { visT: 0, vis: 0 });
+
+const R = {};
+for (const k of ['CA', 'CB', 'CG', 'CD']) R[k] = resAtom(argG, 'arg', 'C', argAtoms[k]);
+R.NE = resAtom(argG, 'arg', 'N', argAtoms.NE);
+R.CZ = resAtom(argG, 'arg', 'C', argAtoms.CZ);
+R.NH1 = resAtom(argG, 'arg', 'N', argAtoms.NH1);
+R.NH2 = resAtom(argG, 'arg', 'N', argAtoms.NH2);
+for (const [a, b, o] of [['CA', 'CB', 1], ['CB', 'CG', 1], ['CG', 'CD', 1], ['CD', 'NE', 1], ['NE', 'CZ', 1], ['CZ', 'NH1', 1], ['CZ', 'NH2', 2]]) {
+  addBond(R[a], R[b], o, { residue: 'arg', ref: o === 2 ? R.NE : null });
+}
+
+const Y = { ring: tyrAtoms.ring.map((p) => resAtom(tyrG, 'tyr', 'C', p)) };
+Y.OH = resAtom(tyrG, 'tyr', 'O', tyrAtoms.OH);
+Y.CB = resAtom(tyrG, 'tyr', 'C', tyrAtoms.CB);
+Y.CA = resAtom(tyrG, 'tyr', 'C', tyrAtoms.CA);
+for (let k = 0; k < 6; k++) addBond(Y.ring[k], Y.ring[(k + 1) % 6], 'ar', { residue: 'tyr', ring: Y.ring });
+addBond(Y.ring[0], Y.OH, 1, { residue: 'tyr' });
+addBond(Y.ring[3], Y.CB, 1, { residue: 'tyr' });
+addBond(Y.CB, Y.CA, 1, { residue: 'tyr' });
+
+/* ---------- Enzyme: channel and protein ribbons ---------- */
+
+const enzymeMats = [];
+const activeRadius = Math.max(5.6, Math.hypot(CA.x, CA.z) + 0.6);
+const channel = (() => {
+  const profile = [
+    [11.5, -24], [9, -19], [6.8, -14], [5.2, -9.5], [5.6, -5], [activeRadius, -1], [activeRadius - 0.2, 2.5],
+    [5.0, 6], [4.2, 9], [2.6, 11.5], [0.4, 12.6],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const geo = new THREE.LatheGeometry(new THREE.SplineCurve(profile).getPoints(80), 96);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, transparent: true, depthWrite: false,
+    uniforms: { uOpacity: { value: 0 }, cA: { value: new THREE.Color(0x3a4cff) }, cB: { value: new THREE.Color(0x9a5cff) } },
+    vertexShader: `varying vec3 vN; varying vec3 vView; varying float vY;
+      void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vView = -mv.xyz; vY = position.y; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `precision mediump float;
+      varying vec3 vN; varying vec3 vView; varying float vY; uniform float uOpacity; uniform vec3 cA; uniform vec3 cB;
+      void main(){
+        float fres = 1.0 - abs(dot(normalize(vN), normalize(vView)));
+        float bands = 0.5 + 0.5 * sin(vY * 2.6);
+        vec3 col = mix(cA, cB, smoothstep(-14.0, 10.0, vY));
+        float a = (0.025 + 0.2 * pow(fres, 1.8)) * (0.75 + 0.25 * bands) * uOpacity;
+        gl_FragColor = vec4(col * (0.3 + 0.7 * fres), a);
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = -1;
+  enzymeG.add(mesh);
+  return mesh;
+})();
+
+function ribbon(curve, radius, color, opacity, segments = 220) {
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0, transparent: true, opacity: 0, depthWrite: false, envMapIntensity: 0.25 });
+  mat.userData.baseOpacity = opacity;
+  enzymeMats.push(mat);
+  const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segments, radius, 10, false), mat);
+  enzymeG.add(mesh);
+  return mesh;
+}
+
+class HelixCurve extends THREE.Curve {
+  constructor(base, axis, length, phase) { super(); this.base = base; this.axis = axis.clone().normalize(); this.length = length; this.phase = phase; this.u = V().crossVectors(this.axis, AX_Z).normalize(); if (this.u.lengthSq() < 0.01) this.u.set(1, 0, 0); this.w = V().crossVectors(this.axis, this.u); }
+  getPoint(t, target = V()) {
+    const ang = this.phase + (t * this.length / 5.4) * Math.PI * 2;
+    return target.copy(this.base).addScaledVector(this.axis, t * this.length).addScaledVector(this.u, Math.cos(ang) * 2.0).addScaledVector(this.w, Math.sin(ang) * 2.0);
+  }
+}
+
+const helixEnds = [];
+{
+  // Helices sit behind and beside the channel only, so nothing crosses in front of the chemistry.
+  const palette = [0x4c58b8, 0x5d4fa8, 0x3f6fb0];
+  const angles = [168, 206, 244, 282, 320, 358];
+  const R_H = activeRadius + 6;
+  angles.forEach((deg, i) => {
+    const a = (deg * Math.PI) / 180;
+    const len = 17 + (i % 3) * 3;
+    const y0 = -15 + (i % 2) * 2.5;
+    const base = V(Math.cos(a) * R_H, y0, Math.sin(a) * R_H);
+    const axis = V(Math.sin(i * 1.7) * 0.16, 1, Math.cos(i * 2.3) * 0.16);
+    ribbon(new HelixCurve(base, axis, len, i), 0.42, palette[i % palette.length], 0.26);
+    helixEnds.push({ bottom: base.clone(), top: base.clone().addScaledVector(axis.normalize(), len) });
+  });
+  for (let i = 0; i < helixEnds.length - 1; i++) {
+    const up = i % 2 === 0;
+    const p0 = up ? helixEnds[i].top : helixEnds[i].bottom;
+    const p1 = up ? helixEnds[i + 1].top : helixEnds[i + 1].bottom;
+    const mid = p0.clone().add(p1).multiplyScalar(0.5);
+    mid.add(radialOut(mid).multiplyScalar(3)).add(V(0, up ? 3.5 : -3.5, 0));
+    ribbon(new THREE.CatmullRomCurve3([p0, mid, p1]), 0.2, 0x5a63a8, 0.14, 60);
+  }
+  // Backbone loops that carry each highlighted residue.
+  const coil = (pts, color) => ribbon(new THREE.CatmullRomCurve3(pts), 0.17, color, 0.4, 120);
+  const outS = radialOut(CA);
+  const sideS = V().crossVectors(outS, AX_Y);
+  coil([
+    serN.clone().add(V(0, 5, 0)).addScaledVector(outS, 2.2).addScaledVector(sideS, -1),
+    serN.clone().add(V(0, 2.2, 0)).addScaledVector(outS, 0.8).addScaledVector(sideS, 0.8),
+    serN, CA, serC,
+    serC.clone().add(V(0, -2.4, 0)).addScaledVector(outS, 0.9).addScaledVector(sideS, -0.9),
+    serC.clone().add(V(0, -5, 0)).addScaledVector(outS, 2.4).addScaledVector(sideS, 0.6),
+  ], 0x5ce1c6);
+  const outR = radialOut(argAtoms.CA);
+  coil([argAtoms.CA.clone().add(V(0, 3.6, 0)).addScaledVector(outR, 2), argAtoms.CA.clone().add(V(0.6, 1.4, 0.4)), argAtoms.CA, argAtoms.CA.clone().add(V(-0.4, -2.2, 0.8)).addScaledVector(outR, 0.8), argAtoms.CA.clone().add(V(0, -4.6, 0)).addScaledVector(outR, 2.2)], 0x4f8bff);
+  coil([tyrAtoms.CA.clone().add(V(-3, 1.6, 0.6)), tyrAtoms.CA.clone().add(V(-1.2, 0.2, 0.9)), tyrAtoms.CA, tyrAtoms.CA.clone().add(V(1.2, 0.9, -1.2)), tyrAtoms.CA.clone().add(V(2.6, 2.4, -2.4))], 0xa58bff);
+}
+
+/* ---------- Arachidonic acid (simplified, no hydrogens) ---------- */
+
+const aaAtoms = [];
+const AA_TIP = (() => {
+  const pts = [];
+  const p = V(0, 0, 0), dir = V(0, 1, 0), side = V(1, 0, 0);
+  for (let k = 1; k <= 20; k++) {
+    pts.push(p.clone().addScaledVector(side, k % 2 === 0 ? 0.42 : -0.42));
+    if ([6, 9, 12, 15].includes(k)) { dir.applyAxisAngle(AX_Z, 0.2); side.applyAxisAngle(AX_Z, 0.2); }
+    p.addScaledVector(dir, 1.27);
+  }
+  const carbons = pts.map((q) => addAtom(aaG, 'C', q, { kind: 'aa' }));
+  const o1 = addAtom(aaG, 'O', pts[0].clone().add(V(0.75, -0.95, 0.2)), { kind: 'aa' });
+  const o2 = addAtom(aaG, 'O', pts[0].clone().add(V(-1.05, -0.45, -0.3)), { kind: 'aa' });
+  aaAtoms.push(...carbons, o1, o2);
+  for (let k = 0; k < 19; k++) addBond(carbons[k], carbons[k + 1], [4, 7, 10, 13].includes(k) ? 2 : 1, { aa: true, ref: carbons[k + 2] || carbons[k - 1] });
+  addBond(carbons[0], o1, 2, { aa: true, ref: carbons[1] });
+  addBond(carbons[0], o2, 1, { aa: true });
+  return pts[19].clone();
+})();
+const aaQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15, 0.6, -0.12));
+const aaBlockTip = acetylCentroidFinal.clone().add(V(-0.7, -3.3, 0.6));
+const aaRestPos = aaBlockTip.clone().sub(AA_TIP.clone().applyQuaternion(aaQ));
+
+/* ---------- Effects: dotted guides, pulses ---------- */
+
+function dotLine(count, color, radius = 0.075) {
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
+  const dots = [];
+  for (let i = 0; i < count; i++) { const m = new THREE.Mesh(sphereGeo, mat); m.scale.setScalar(radius); root.add(m); dots.push(m); }
+  return { mat, dots, op: 0 };
+}
+const guide = dotLine(9, 0xffc285, 0.07);
+const ionic1 = dotLine(6, 0x6fb6ff, 0.06);
+const ionic2 = dotLine(6, 0x6fb6ff, 0.06);
+const ghost = dotLine(14, 0xa58bff, 0.06);
+
+function placeDots(line, a, b, op, time, flow = true) {
+  line.op += (op - line.op) * 0.15;
+  line.mat.opacity = line.op;
+  const n = line.dots.length;
+  for (let i = 0; i < n; i++) {
+    const f = flow ? ((i + (time * 0.6) % 1) / n) : (i + 0.5) / n;
+    line.dots[i].position.lerpVectors(a, b, f);
+    line.dots[i].visible = line.op > 0.01;
+  }
+}
+
+function sprite(tex, color) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  s.visible = false;
+  root.add(s);
+  return s;
+}
+const pulseRing = sprite(ringTex, 0xffa64d);
+const pulseGlow = sprite(softTex, 0xff8a2a);
+const blockRing = sprite(ringTex, 0xff4d4d);
+const tyrGlow = sprite(softTex, 0xa58bff);
+
+/* ============================================================
+   State
+   ============================================================ */
+
+const state = {
+  mode: 'explore',
+  style: 'ball',
+  styleMix: 0,
+  showH: true,
+  autoRotate: !reduceMotion,
+  selected: null,
+  hover: null,
+  group: 'ring',
+  t: 0,
+  playing: false,
+  speed: 1,
+  zoom: 1,
+  zoomT: 1,
+  enzymeVis: 0,
+  hintDismissed: false,
+  tl: { stage: 0, u: 0, a: 0, aCur: 0, hg: 0, hgCur: 0, h1: 0, h1Cur: 0, sal: 1, salCur: 1 },
+};
+
+/* ============================================================
+   Orientation, camera and controls
+   ============================================================ */
+
+// Explore view: ring face-on to the camera, long axis horizontal, turned a little for depth.
+const qExplore = (() => {
+  const n = ringNormalMol.clone();
+  const x = V().subVectors(molPos[14], molPos[5]);
+  x.sub(n.clone().multiplyScalar(x.dot(n))).normalize();
+  const y = V().crossVectors(n, x);
+  const m = new THREE.Matrix4().makeBasis(x, y, n).transpose();
+  const base = new THREE.Quaternion().setFromRotationMatrix(m);
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.32, 0.5, 0.05)).multiply(base);
+})();
+const qTransfer = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.06, -0.38, 0));
+
+const ctrl = { q: qExplore.clone(), qT: qExplore.clone(), vYaw: 0, vPitch: 0, dragging: false };
+root.quaternion.copy(ctrl.q);
+
+function rotateBy(yaw, pitch) {
+  _q1.setFromAxisAngle(AX_Y, yaw);
+  _q2.setFromAxisAngle(AX_X, pitch);
+  ctrl.qT.premultiply(_q1).premultiply(_q2).normalize();
+}
+
+const cam = { target: V(), dist: 18, dir: V(0, 0.2, 1).normalize() };
+
+function stageFraming(out) {
+  // Returns the base camera target (stage frame) and distance for the current timeline position.
+  const { stage, u } = state.tl;
+  const active = OG.clone().multiplyScalar(0.5);
+  const transfer = acetylCentroidFinal.clone().add(OG).multiplyScalar(0.5);
+  const effect = V(0, acetylCentroidFinal.y + 0.4, 0);
+  const K = [
+    [{ p: V(0, -12, 0), d: 46 }, { p: V(0, -1.5, 0), d: 28 }],
+    [{ p: V(0, -1.5, 0), d: 28 }, { p: active, d: 20 }],
+    [{ p: active, d: 20 }, { p: transfer, d: 15 }],
+    [{ p: transfer, d: 15 }, { p: V(0, -3, 0), d: 31 }],
+    [{ p: V(0, -3, 0), d: 31 }, { p: effect, d: 32 }],
+  ][stage];
+  const e = ease.inOut(u);
+  out.p.lerpVectors(K[0].p, K[1].p, e);
+  out.d = K[0].d + (K[1].d - K[0].d) * e;
+  return out;
+}
+const framing = { p: V(), d: 18 };
+
+function aspectFactor() {
+  // Portrait screens need the camera further back to fit the scene's width.
+  return Math.max(1, (state.mode === 'transfer' ? 1.2 : 0.82) / camera.aspect);
+}
+
+/* ============================================================
+   Picking
+   ============================================================ */
+
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+
+function pickAt(x, y) {
+  if (state.mode === 'transfer') return null;
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const atomMeshes = aspirinAtoms.filter((r) => r.mesh.visible && r.sc > 0.05 && r.op > 0.05).map((r) => r.mesh);
+  const hit = raycaster.intersectObjects(atomMeshes, false)[0];
+  if (hit) return { type: 'atom', rec: hit.object.userData.atom };
+  if (state.styleMix < 0.5) {
+    const picks = aspirinBonds.filter((b) => b.pick && b.pick.visible).map((b) => b.pick);
+    const bh = raycaster.intersectObjects(picks, false)[0];
+    if (bh) return { type: 'bond', rec: bh.object.userData.bond };
+  }
+  return null;
+}
+
+/* ============================================================
+   Visual state targets
+   ============================================================ */
+
+function baseRadius(r) {
+  const E = ELEMENTS[r.el];
+  if (r.kind === 'residue') return E.bs * 0.85;
+  return E.bs + (E.vdw - E.bs) * state.styleMix;
+}
+
+function setGlow(rec, amount, color) {
+  if (amount > rec.glowT) { rec.glowT = amount; rec.gcT.copy(color); }
+}
+
+function computeTargets(time) {
+  const mode = state.mode;
+  const tl = state.tl;
+  const inTransfer = mode === 'transfer';
+
+  for (const r of atoms) {
+    r.glowT = 0;
+    r.gcT.copy(COL.black);
+    r.opT = 1;
+    r.scT = baseRadius(r);
+    if (r.kind === 'aspirin' && r.el === 'H' && !state.showH) r.scT = 0;
+    if (r.kind === 'residue') r.opT = state.enzymeVis;
+    if (r.kind === 'aa') r.opT = 0;
+  }
+  for (const b of bonds) { b.glowT = 0; b.gcT.copy(COL.black); }
+
+  if (mode === 'explore') {
+    const h = state.hover, s = state.selected;
+    if (h?.type === 'atom') setGlow(h.rec, 0.4, COL.hover);
+    if (h?.type === 'bond') h.rec.glowT = Math.max(h.rec.glowT, 0.5), h.rec.gcT.copy(COL.hover);
+    if (s?.type === 'atom') {
+      setGlow(s.rec, 1.35, COL.select);
+      for (const b of aspirinBonds) if (b.a === s.rec || b.b === s.rec) { b.glowT = 1.1; b.gcT.copy(COL.select); }
+    }
+    if (s?.type === 'bond') {
+      s.rec.glowT = 1.8; s.rec.gcT.copy(COL.select);
+      setGlow(s.rec.a, 0.6, COL.select);
+      setGlow(s.rec.b, 0.6, COL.select);
+    }
+  } else if (mode === 'groups') {
+    const g = GROUPS[state.group];
+    const gc = new THREE.Color(g.color);
+    for (const r of aspirinAtoms) {
+      if (r.group === state.group) setGlow(r, 1.35, gc);
+      else r.opT = 0.16;
+    }
+    for (const b of aspirinBonds) if (b.a.group === state.group && b.b.group === state.group) { b.glowT = 1.0; b.gcT.copy(gc); }
+    if (state.hover?.type === 'atom' && state.hover.rec.group !== state.group) state.hover.rec.opT = 0.45;
+  } else {
+    const { stage, u } = tl;
+    const acetylGlow = [0, 1.5 * seg(u, 0.25, 0.65), 1.8, 1.2, 1.0][stage];
+    const serGlow = [0, 1.2 * seg(u, 0.25, 0.65), 1.3, 0.7, 0.7][stage];
+    for (const r of aspirinAtoms) {
+      if (r.acetyl) setGlow(r, acetylGlow, COL.acetyl);
+      else r.opT = tl.salCur;
+    }
+    A[10].opT = Math.min(A[10].opT, 1 - tl.h1Cur);
+    for (const r of residueAtoms.ser) if (r.side) setGlow(r, serGlow * (r === S.OG && stage === 2 ? 1.3 : 1), COL.ser);
+    HG.opT = state.enzymeVis;
+    if (stage >= 2 && tl.hgCur > 0.5) HG.opT = Math.max(tl.salCur, stage >= 4 ? 0 : 0);
+    if (stage === 1) for (const r of [R.NH1, R.NH2, R.CZ]) setGlow(r, 0.9 * seg(u, 0.3, 0.7), COL.arg);
+    if (stage === 4) {
+      const pulse = seg(u, 0.45, 0.6) * (0.7 + 0.5 * Math.sin(time * 5));
+      for (const r of residueAtoms.tyr) setGlow(r, pulse, COL.tyr);
+      for (const r of aaAtoms) { r.opT = seg(u, 0, 0.06); setGlow(r, 0.55, COL.substrate); }
+    }
+    // Bonds that break and form.
+    const breakAmt = stage < 2 ? 0 : stage === 2 ? seg(u, 0.3, 0.5) : 1;
+    esterBond.visT = 1 - breakAmt;
+    if (stage === 2 && u > 0.1 && u < 0.5) { esterBond.glowT = 1.6 * (0.65 + 0.35 * Math.sin(time * 28)); esterBond.gcT.copy(COL.red); }
+    newBond.visT = stage < 2 ? 0 : stage === 2 ? seg(u, 0.45, 0.66) : 1;
+    newBond.glowT = stage === 2 ? 1.8 : stage > 2 ? 1.0 : 0;
+    newBond.gcT.copy(COL.acetyl);
+    serOHBond.visT = 1 - seg(tl.hgCur, 0, 0.35);
+    salOHBond.visT = seg(tl.hgCur, 0.65, 1);
+  }
+
+  if (!inTransfer) {
+    esterBond.visT = 1;
+    newBond.visT = 0;
+    serOHBond.visT = 1;
+    salOHBond.visT = 0;
+  }
+}
+
+function applyVisuals(dt) {
+  const k = damp(9, dt), ks = damp(7, dt);
+  for (const r of atoms) {
+    r.glow += (r.glowT - r.glow) * k;
+    r.gc.lerp(r.gcT, k);
+    r.op += (r.opT - r.op) * k;
+    r.sc += (r.scT - r.sc) * ks;
+    // Highlights tint the atom itself, then add a glow, so colours stay saturated instead of blowing out to white.
+    r.mat.color.copy(r.base).lerp(r.gc, Math.min(1, r.glow) * 0.7);
+    r.mat.emissive.copy(r.gc).multiplyScalar(r.glow * 0.75);
+    r.mat.opacity = r.op;
+    const transparent = r.op < 0.995;
+    if (r.mat.transparent !== transparent) { r.mat.transparent = transparent; r.mat.needsUpdate = true; }
+    r.mesh.visible = r.op > 0.01 && r.sc > 0.004;
+    r.mesh.scale.setScalar(Math.max(r.sc, 0.0001));
+  }
+  for (const b of bonds) {
+    b.glow += (b.glowT - b.glow) * k;
+    b.gc.lerp(b.gcT, k);
+    b.vis += (b.visT - b.vis) * ks;
+    const op = Math.min(b.a.op, b.b.op);
+    for (const h of b.halves) {
+      const ag = h.atom.glow * 0.55;
+      const useBond = b.glow > ag;
+      const g = useBond ? b.glow : ag, gc = useBond ? b.gc : h.atom.gc;
+      h.mat.color.copy(h.base).lerp(gc, Math.min(1, g) * 0.7);
+      h.mat.emissive.copy(gc).multiplyScalar(g * 0.75);
+      h.mat.opacity = op;
+      const transparent = op < 0.995;
+      if (h.mat.transparent !== transparent) { h.mat.transparent = transparent; h.mat.needsUpdate = true; }
+    }
+    if (b.dashMat) {
+      b.dashMat.opacity = op;
+      const transparent = op < 0.995;
+      if (b.dashMat.transparent !== transparent) { b.dashMat.transparent = transparent; b.dashMat.needsUpdate = true; }
+      b.dashMat.emissive.copy(b.a.gc).multiplyScalar(b.a.glow * 0.4);
+    }
+  }
+}
+
+/* ============================================================
+   Bond geometry (rebuilt every frame from atom positions)
+   ============================================================ */
+
+function localPos(r, out) {
+  out.copy(r.mesh.position);
+  if (r.parent !== root) out.applyMatrix4(r.parent.matrix);
+  return out;
+}
+
+function placeCyl(mesh, a, b, radius) {
+  _v4.subVectors(b, a);
+  const len = _v4.length();
+  if (len < 1e-4 || radius < 0.004) { mesh.visible = false; return; }
+  mesh.visible = true;
+  mesh.position.addVectors(a, b).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(AX_Y, _v4.divideScalar(len));
+  mesh.scale.set(radius, len, radius);
+}
+
+const pa = V(), pb = V(), pm = V(), off = V(), pr = V(), rc = V();
+function updateBonds() {
+  for (const g of [aspirinG, acetylG, aaG, serG, argG, tyrG, enzymeG]) g.updateMatrix();
+  for (const b of bonds) {
+    localPos(b.a, pa);
+    localPos(b.b, pb);
+    pm.addVectors(pa, pb).multiplyScalar(0.5);
+    const styled = b.aspirin || b.aa || b === esterBond;
+    const styleK = styled ? 1 - state.styleMix : 1;
+    const presence = clamp(Math.min(b.a.sc, b.b.sc) / 0.15, 0, 1);
+    const visible = Math.min(b.a.op, b.b.op) > 0.01;
+    const k = (visible ? 1 : 0) * styleK * presence * b.vis * (b.residue ? 0.82 : 1);
+
+    if (b.order === 2) {
+      localPos(b.ref || b.a, pr);
+      _v1.subVectors(pb, pa);
+      _v2.subVectors(pr, pa);
+      off.crossVectors(_v1, _v2).cross(_v1);
+      if (off.lengthSq() < 1e-6) off.set(0, 0, 1).cross(_v1);
+      off.normalize().multiplyScalar(0.095);
+      for (const h of b.halves) {
+        const s = h.line === 0 ? 1 : -1;
+        _v1.copy(off).multiplyScalar(s);
+        if (h.atom === b.a) placeCyl(h.mesh, _v2.copy(pa).add(_v1), _v3.copy(pm).add(_v1), 0.058 * k);
+        else placeCyl(h.mesh, _v2.copy(pm).add(_v1), _v3.copy(pb).add(_v1), 0.058 * k);
+      }
+    } else {
+      const r = (b.order === 'ar' ? 0.078 : 0.085) * k;
+      placeCyl(b.halves[0].mesh, pa, pm, r);
+      placeCyl(b.halves[1].mesh, pm, pb, r);
+    }
+
+    if (b.order === 'ar') {
+      rc.set(0, 0, 0);
+      for (const ra of b.ring) rc.add(localPos(ra, _v3));
+      rc.divideScalar(6);
+      off.subVectors(rc, pm);
+      _v1.subVectors(pb, pa).normalize();
+      off.sub(_v1.multiplyScalar(off.dot(_v1))).normalize().multiplyScalar(0.25);
+      for (let i = 0; i < 3; i++) {
+        const f0 = 0.22 + (i / 3) * 0.56 + 0.03, f1 = 0.22 + ((i + 1) / 3) * 0.56 - 0.03;
+        _v2.lerpVectors(pa, pb, f0).add(off);
+        _v3.lerpVectors(pa, pb, f1).add(off);
+        placeCyl(b.dashes[i], _v2, _v3, 0.036 * k);
+      }
+    }
+
+    if (b.pick) {
+      if (state.mode === 'transfer' || k < 0.3) b.pick.visible = false;
+      else placeCyl(b.pick, pa, pb, 0.2);
+    }
+  }
+}
+
+/* ============================================================
+   Reaction timeline
+   ============================================================ */
+
+// The approach curves in front of Arg120 rather than through it.
+const P0 = V(-1, -27, 7), PC = V(1.5, -9, 6.5), P1 = V(0.6, -1.8, 1.2), P4 = V(-2.5, -28, 6);
+const Q0 = qBound.clone().premultiply(new THREE.Quaternion().setFromAxisAngle(V(0.4, 1, 0.3).normalize(), 2.4));
+const Q1 = qBound.clone().premultiply(new THREE.Quaternion().setFromAxisAngle(V(0.3, 1, 0.2).normalize(), 0.85));
+const Q4 = qBound.clone().premultiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0.3, 0.2).normalize(), -1.6));
+const asp = { posT: V(), qT: new THREE.Quaternion() };
+const aa = { posT: aaRestPos.clone().add(V(0, -26, 0)) };
+aaG.quaternion.copy(aaQ);
+aaG.position.copy(aa.posT);
+
+function stageIndex(t) {
+  let i = 0;
+  while (i < 4 && t >= STARTS[i + 1]) i++;
+  return i;
+}
+
+function evalTimeline() {
+  const tl = state.tl;
+  const i = stageIndex(state.t);
+  const u = clamp((state.t - STARTS[i]) / DUR[i], 0, 1);
+  tl.stage = i; tl.u = u;
+  let a = 0, hg = 0, h1 = 1, sal = 1;
+  if (i === 0) {
+    const e = ease.inOut(u);
+    asp.posT.copy(P0).multiplyScalar((1 - e) * (1 - e))
+      .addScaledVector(PC, 2 * (1 - e) * e)
+      .addScaledVector(P1, e * e)
+      .add(_v1.set(Math.sin(u * 9) * 0.5 * (1 - u), 0, Math.cos(u * 7) * 0.4 * (1 - u)));
+    asp.qT.slerpQuaternions(Q0, Q1, e);
+    h1 = seg(u, 0.45, 0.85);
+  } else if (i === 1) {
+    const e = ease.inOut(u);
+    asp.posT.lerpVectors(P1, V(), e);
+    asp.qT.slerpQuaternions(Q1, qBound, e);
+  } else if (i === 2) {
+    asp.posT.set(0, 0, 0);
+    asp.qT.copy(qBound);
+    a = ease.inOut(seg(u, 0.22, 0.62));
+    hg = ease.inOut(seg(u, 0.45, 0.8));
+  } else if (i === 3) {
+    const e = ease.in(seg(u, 0.05, 1));
+    asp.posT.lerpVectors(V(), P4, e);
+    asp.qT.slerpQuaternions(qBound, Q4, e);
+    a = 1; hg = 1; sal = 1 - seg(u, 0.55, 0.95);
+  } else {
+    asp.posT.copy(P4);
+    asp.qT.copy(Q4);
+    a = 1; hg = 1; sal = 0;
+  }
+  tl.a = a; tl.hg = hg; tl.h1 = h1; tl.sal = sal;
+
+  // Arachidonic acid: rises tail-first, bumps into the acetyl group twice, then settles back.
+  let offY = -26;
+  if (i === 4) {
+    if (u < 0.42) offY = -24 * (1 - ease.out(u / 0.42));
+    else if (u < 0.52) offY = -1.1 * Math.sin(Math.PI * (u - 0.42) / 0.1);
+    else if (u < 0.62) offY = -0.7 * Math.sin(Math.PI * (u - 0.52) / 0.1);
+    else offY = -1.5 * ease.inOut(seg(u, 0.62, 0.8));
+  }
+  aa.posT.copy(aaRestPos).add(_v1.set(0, offY, 0));
+}
+
+/* ============================================================
+   Poses
+   ============================================================ */
+
+const acetylAttached = { pos: V(), q: new THREE.Quaternion() };
+const hgA = V(), hgB = V(), hgC = V();
+function updatePoses(dt) {
+  const k = damp(6.5, dt);
+  const tl = state.tl;
+  if (state.mode === 'transfer') {
+    aspirinG.position.lerp(asp.posT, k);
+    aspirinG.quaternion.slerp(asp.qT, k);
+    tl.aCur += (tl.a - tl.aCur) * k;
+    tl.hgCur += (tl.hg - tl.hgCur) * k;
+    tl.h1Cur += (tl.h1 - tl.h1Cur) * k;
+    tl.salCur += (tl.sal - tl.salCur) * k;
+    aaG.position.lerp(aa.posT, damp(9, dt));
+  } else {
+    aspirinG.position.lerp(_v1.set(0, 0, 0), k);
+    aspirinG.quaternion.slerp(_q1.identity(), k);
+    tl.aCur += (0 - tl.aCur) * k;
+    tl.hgCur += (0 - tl.hgCur) * k;
+    tl.h1Cur += (0 - tl.h1Cur) * k;
+    tl.salCur += (1 - tl.salCur) * k;
+  }
+  // Acetyl group: attached to aspirin, or carried across to Ser530.
+  acetylG.position.copy(aspirinG.position).lerp(dStage, tl.aCur);
+  acetylG.quaternion.copy(aspirinG.quaternion).slerp(qBound, tl.aCur);
+
+  // Acid H drifts away as H+ when aspirin ionises.
+  A[10].mesh.position.copy(molPos[10]).addScaledVector(_v1.subVectors(molPos[10], molPos[9]).normalize(), tl.h1Cur * 3.2);
+
+  // Ser530's hydroxyl H arcs across to salicylate's oxygen.
+  aspirinG.updateMatrix();
+  hgA.copy(hgSerPos);
+  hgB.copy(hgSalLocal).applyMatrix4(aspirinG.matrix);
+  hgC.addVectors(hgA, hgB).multiplyScalar(0.5).add(_v1.set(0, 1.1, 0));
+  const s = tl.hgCur;
+  HG.mesh.position.set(0, 0, 0)
+    .addScaledVector(hgA, (1 - s) * (1 - s))
+    .addScaledVector(hgC, 2 * (1 - s) * s)
+    .addScaledVector(hgB, s * s);
+}
+
+/* ============================================================
+   3D-anchored tags
+   ============================================================ */
+
+const tagLayer = $('tags');
+const tags = {};
+function makeTag(id, text, color, cls = '') {
+  const el = document.createElement('div');
+  el.className = `tag ${cls}`;
+  el.style.setProperty('--c', color);
+  el.textContent = text;
+  tagLayer.appendChild(el);
+  tags[id] = { el, on: false };
+}
+makeTag('sel', '', '#bdeeff');
+makeTag('ser', 'SER530 — SERINE 530', '#5ce1c6', 'big');
+makeTag('arg', 'ARG120', '#7fa6ff');
+makeTag('tyr', 'TYR385 · catalytic site', '#b9a6ff');
+makeTag('hplus', 'H⁺', '#e9ecf6', 'plain');
+makeTag('dist', '', '#ffc285');
+makeTag('sal', 'Salicylate', '#cfd5ea');
+makeTag('acser', 'Acetyl group on Ser530', '#ffb36b', 'big');
+makeTag('aa', 'Arachidonic acid (simplified)', '#f2d38a');
+makeTag('blocked', 'Blocked ✕', '#ff7a7a', 'big');
+
+const _proj = V();
+function screenOf(localP, out) {
+  _proj.copy(localP).applyQuaternion(root.quaternion).project(camera);
+  out.x = (_proj.x * 0.5 + 0.5) * innerWidth;
+  out.y = (-_proj.y * 0.5 + 0.5) * innerHeight;
+  out.behind = _proj.z > 1;
+  return out;
+}
+const scr = { x: 0, y: 0, behind: false };
+function showTag(id, localP, on, dx = 14, dy = -14, text) {
+  const t = tags[id];
+  if (text !== undefined && t.text !== text) { t.el.textContent = text; t.text = text; t.w = 0; }
+  if (on) {
+    screenOf(localP, scr);
+    on = !scr.behind;
+    if (on) {
+      if (!t.w) t.w = t.el.offsetWidth;
+      const x = clamp(scr.x + dx, 8, innerWidth - t.w - 8);
+      const y = clamp(scr.y + dy, 46, innerHeight - 36);
+      t.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    }
+  }
+  if (on !== t.on) { t.on = on; t.el.classList.toggle('on', on); }
+}
+
+const tmpL = V(), tmpL2 = V();
+function updateTags(time) {
+  const tr = state.mode === 'transfer';
+  const { stage, u } = state.tl;
+  const sel = state.selected;
+  if (state.mode === 'explore' && sel?.type === 'atom') {
+    showTag('sel', localPos(sel.rec, tmpL), true, 16, -30, `${sel.rec.label} · #${sel.rec.n}`);
+  } else showTag('sel', tmpL, false);
+
+  showTag('ser', localPos(S.CA, tmpL), tr && state.enzymeVis > 0.5, 18, 10);
+  showTag('arg', localPos(R.CD, tmpL), tr && state.enzymeVis > 0.5 && stage <= 1, -70, 6);
+  showTag('tyr', tyrAtoms.center, tr && state.enzymeVis > 0.5, 26, -6);
+  showTag('hplus', localPos(A[10], tmpL), tr && stage === 0 && state.tl.h1Cur > 0.15 && state.tl.h1Cur < 0.9, 10, -10);
+  const c8 = localPos(A[12], tmpL);
+  const d = c8.distanceTo(OG);
+  showTag('dist', tmpL2.addVectors(c8, OG).multiplyScalar(0.5), tr && ((stage === 1 && u > 0.4) || (stage === 2 && u < 0.35)), 10, 8, `${d.toFixed(1)} Å`);
+  showTag('sal', aspirinG.position, tr && stage === 3 && u > 0.15 && u < 0.7, 18, 0);
+  showTag('acser', acetylCentroidFinal, tr && ((stage === 3 && u > 0.25) || stage === 4), -20, -46);
+  const tip = tmpL.copy(AA_TIP).applyQuaternion(aaQ).add(aaG.position);
+  showTag('aa', tmpL2.copy(tip).add(V(0, -3, 0)), tr && stage === 4 && u > 0.2, -250, 0);
+  showTag('blocked', aaBlockTip, tr && stage === 4 && u > 0.44, 20, 12);
+}
+
+/* ============================================================
+   Effects per frame
+   ============================================================ */
+
+function updateEffects(time) {
+  const tr = state.mode === 'transfer';
+  const { stage, u } = state.tl;
+  const c8 = localPos(A[12], V());
+  placeDots(guide, c8, OG, tr && ((stage === 1 && u > 0.35) || (stage === 2 && u < 0.42)) ? 0.95 : 0, time);
+  const ionicOn = tr && (stage === 1 ? seg(u, 0.3, 0.6) : stage === 2 ? 1 : 0);
+  placeDots(ionic1, localPos(A[8], V()), argAtoms.NH1, ionicOn * 0.85, time, false);
+  placeDots(ionic2, localPos(A[9], V()), argAtoms.NH2, ionicOn * 0.85, time, false);
+  placeDots(ghost, aaBlockTip, tyrAtoms.OH, tr && stage === 4 && u > 0.5 ? 0.45 : 0, time);
+
+  // Energy pulse when the new Ser530–acetyl bond forms.
+  const p = tr && stage === 2 ? seg(u, 0.64, 0.96) : 0;
+  const pulseOn = p > 0 && p < 1 && !reduceMotion;
+  pulseRing.visible = pulseGlow.visible = pulseOn;
+  if (pulseOn) {
+    pulseRing.position.copy(acetylFinal(12));
+    pulseGlow.position.copy(pulseRing.position);
+    pulseRing.scale.setScalar(0.8 + p * 9);
+    pulseRing.material.opacity = Math.pow(1 - p, 1.4) * 0.9;
+    pulseGlow.scale.setScalar(2.5 + p * 3);
+    pulseGlow.material.opacity = Math.pow(1 - p, 2) * 0.75;
+  }
+  // Contact pulses where arachidonic acid hits the acetyl group.
+  const b1 = tr && stage === 4 ? seg(u, 0.41, 0.53) : 0, b2 = tr && stage === 4 ? seg(u, 0.51, 0.63) : 0;
+  const bp = b1 > 0 && b1 < 1 ? b1 : b2 > 0 && b2 < 1 ? b2 : 0;
+  blockRing.visible = bp > 0 && !reduceMotion;
+  if (blockRing.visible) {
+    blockRing.position.copy(aaBlockTip).add(V(0, 0.6, 0));
+    blockRing.scale.setScalar(0.6 + bp * 4.5);
+    blockRing.material.opacity = (1 - bp) * 0.9;
+  }
+  tyrGlow.visible = tr && stage === 4 && u > 0.45;
+  if (tyrGlow.visible) {
+    tyrGlow.position.copy(tyrAtoms.OH);
+    tyrGlow.scale.setScalar(4.5);
+    tyrGlow.material.opacity = 0.25 + 0.15 * Math.sin(time * 4);
+  }
+}
+
+/* ============================================================
+   UI: notch
+   ============================================================ */
+
+const notch = $('notch'), notchFace = $('notchFace'), notchPanel = $('notchPanel');
+let notchOpen = false, notchPinned = false, notchCloseTimer = 0;
+
+function measureNotch() {
+  notch.style.setProperty('--open-h', `${36 + notchPanel.offsetHeight + 2}px`);
+}
+function setNotch(open, pinned = false) {
+  notchOpen = open;
+  notchPinned = open && pinned;
+  notch.dataset.open = String(open);
+  notchFace.setAttribute('aria-expanded', String(open));
+  if (open) measureNotch();
+}
+new ResizeObserver(measureNotch).observe(notchPanel);
+notchFace.addEventListener('click', () => {
+  if (notchOpen && notchPinned) setNotch(false);
+  else setNotch(true, true);
+});
+document.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' || ctrl.dragging) return;
+  const r = notch.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const near = notchOpen
+    ? e.clientX > r.left - 36 && e.clientX < r.right + 36 && e.clientY < r.bottom + 36
+    : Math.abs(e.clientX - cx) < 170 && e.clientY < 70;
+  if (near) {
+    clearTimeout(notchCloseTimer); notchCloseTimer = 0;
+    if (!notchOpen) setNotch(true);
+  } else if (notchOpen && !notchPinned && !notchCloseTimer) {
+    notchCloseTimer = setTimeout(() => { notchCloseTimer = 0; setNotch(false); }, 380);
+  }
+});
+
+/* ============================================================
+   UI: modes and tools
+   ============================================================ */
+
+const caption = $('caption'), info = $('info'), groupLabel = $('groupLabel'), hint = $('hint');
+const dotsEl = $('dots');
+STAGES.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.innerHTML = `<i><b></b></i><span>Stage ${i + 1}: ${s.title}</span>`;
+  b.addEventListener('click', () => goStage(i));
+  dotsEl.appendChild(b);
+});
+const dotBars = [...dotsEl.querySelectorAll('b')];
+
+function setMode(mode) {
+  if (state.mode === mode) return;
+  const prev = state.mode;
+  state.mode = mode;
+  state.hover = null;
+  if (mode !== 'explore') clearSelection();
+  for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', String(b.dataset.mode === mode));
+  for (const r of document.querySelectorAll('[data-for]')) r.hidden = r.dataset.for !== mode;
+  $('eduBadge').hidden = mode !== 'transfer';
+  document.body.dataset.mode = mode;
+  if (mode === 'transfer') {
+    state.rotateBeforeTransfer = state.autoRotate;
+    setAutoRotate(false);
+    ctrl.qT.copy(qTransfer);
+    state.t = 0;
+    state.playing = true;
+    state.zoomT = 1;
+  } else {
+    if (prev === 'transfer') {
+      state.playing = false;
+      setAutoRotate(state.rotateBeforeTransfer ?? !reduceMotion);
+      ctrl.qT.copy(qExplore);
+      state.zoomT = 1;
+    }
+  }
+  caption.classList.toggle('off', mode !== 'transfer');
+  updateHint();
+  syncPlay();
+  measureNotch();
+  updateGroupUI();
+}
+
+function setGroup(g) {
+  state.group = g;
+  for (const c of document.querySelectorAll('[data-group]')) c.setAttribute('aria-pressed', String(c.dataset.group === g));
+  updateGroupUI();
+}
+function updateGroupUI() {
+  const on = state.mode === 'groups';
+  groupLabel.classList.toggle('off', !on);
+  if (on) {
+    const g = GROUPS[state.group];
+    groupLabel.style.setProperty('--c', g.css);
+    $('groupName').textContent = g.name;
+    $('groupText').textContent = g.text;
+  }
+}
+function cycleGroup(dir) {
+  const i = GROUP_ORDER.indexOf(state.group);
+  setGroup(GROUP_ORDER[(i + dir + GROUP_ORDER.length) % GROUP_ORDER.length]);
+}
+
+function setAutoRotate(on) {
+  state.autoRotate = on;
+  $('btnRotate').setAttribute('aria-pressed', String(on));
+}
+function setStyle(style) {
+  state.style = style;
+  for (const b of document.querySelectorAll('[data-style]')) b.setAttribute('aria-pressed', String(b.dataset.style === style));
+}
+function setShowH(on) {
+  state.showH = on;
+  $('btnH').setAttribute('aria-pressed', String(on));
+  if (!on && state.selected?.type === 'atom' && state.selected.rec.el === 'H') clearSelection();
+  if (!on && state.selected?.type === 'bond' && (state.selected.rec.a.el === 'H' || state.selected.rec.b.el === 'H')) clearSelection();
+}
+function resetView() {
+  ctrl.qT.copy(state.mode === 'transfer' ? qTransfer : qExplore);
+  ctrl.vYaw = ctrl.vPitch = 0;
+  state.zoomT = 1;
+  if (state.mode === 'explore') clearSelection();
+}
+
+function syncPlay() {
+  const playing = state.playing;
+  $('btnPlay').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  $('playText').textContent = playing ? 'Pause' : 'Play';
+  $('playIcon').innerHTML = playing ? '<path d="M9 6v12M15 6v12"/>' : '<path d="M8 5.5v13l11-6.5z"/>';
+}
+function togglePlay() {
+  if (state.mode !== 'transfer') { setAutoRotate(!state.autoRotate); return state.autoRotate ? 'Auto-rotation on' : 'Auto-rotation paused'; }
+  if (!state.playing && state.t >= T_TOTAL - 0.01) state.t = 0;
+  state.playing = !state.playing;
+  syncPlay();
+  return state.playing ? 'Playing' : 'Paused';
+}
+function goStage(i) {
+  if (state.mode !== 'transfer') setMode('transfer');
+  state.t = STARTS[clamp(i, 0, 4)];
+  syncPlay();
+}
+function stepStage(dir) {
+  const i = stageIndex(state.t);
+  if (dir < 0 && state.t - STARTS[i] > 0.8) goStage(i);
+  else goStage(i + dir);
+}
+
+for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
+for (const c of document.querySelectorAll('[data-group]')) c.addEventListener('click', () => setGroup(c.dataset.group));
+for (const b of document.querySelectorAll('[data-style]')) b.addEventListener('click', () => setStyle(b.dataset.style));
+for (const b of document.querySelectorAll('[data-speed]')) b.addEventListener('click', () => {
+  state.speed = Number(b.dataset.speed);
+  for (const o of document.querySelectorAll('[data-speed]')) o.setAttribute('aria-pressed', String(o === b));
+});
+$('btnRotate').addEventListener('click', () => setAutoRotate(!state.autoRotate));
+$('btnReset').addEventListener('click', resetView);
+$('btnH').addEventListener('click', () => setShowH(!state.showH));
+$('btnPlay').addEventListener('click', togglePlay);
+$('btnRestart').addEventListener('click', () => { state.t = 0; state.playing = true; syncPlay(); });
+$('btnPrev').addEventListener('click', () => stepStage(-1));
+$('btnNext').addEventListener('click', () => stepStage(1));
+$('capPrev').addEventListener('click', () => stepStage(-1));
+$('capNext').addEventListener('click', () => stepStage(1));
+
+const root_ = document.documentElement;
+const canFullscreen = !!(root_.requestFullscreen || root_.webkitRequestFullscreen);
+$('btnFull').hidden = !canFullscreen;
+function toggleFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else Promise.resolve((root_.requestFullscreen || root_.webkitRequestFullscreen).call(root_)).catch(() => {});
+}
+$('btnFull').addEventListener('click', toggleFullscreen);
+
+/* ============================================================
+   UI: selection details
+   ============================================================ */
+
+function bondLength(b) {
+  return localPos(b.a, _v1).distanceTo(localPos(b.b, _v2));
+}
+function orderWord(o) { return o === 2 ? 'double' : o === 'ar' ? 'aromatic' : 'single'; }
+
+function select(sel) {
+  state.selected = sel;
+  if (!sel) { info.classList.add('off'); return; }
+  const tile = $('infoTile');
+  const pill = $('infoGroup');
+  if (sel.type === 'atom') {
+    const r = sel.rec;
+    const E = ELEMENTS[r.el];
+    const g = GROUPS[r.group];
+    tile.textContent = r.el;
+    tile.style.setProperty('--c', E.css);
+    $('infoName').innerHTML = `${E.name} <small>${r.el} · ${r.label}</small>`;
+    $('infoSub').textContent = `Atom ${r.n} of 21`;
+    pill.style.setProperty('--c', g.css);
+    pill.querySelector('span').textContent = g.name;
+    $('infoBondsLabel').textContent = 'Bonds';
+    const list = aspirinBonds.filter((b) => b.a === r || b.b === r).map((b) => `<li>${(b.a === r ? b.b : b.a).label} · ${orderWord(b.order)}</li>`);
+    $('infoBonds').innerHTML = list.join('');
+    $('infoText').textContent = r.text;
+  } else {
+    const b = sel.rec;
+    const [name, text] = BOND_INFO[b.order];
+    tile.textContent = b.order === 2 ? '=' : b.order === 'ar' ? '≈' : '–';
+    tile.style.setProperty('--c', b.order === 'ar' ? GROUPS.ring.css : '#9aa3b5');
+    $('infoName').innerHTML = `${name}`;
+    $('infoSub').textContent = `${b.a.label}–${b.b.label} · ${bondLength(b).toFixed(2)} Å`;
+    const gKey = b.a.group === b.b.group ? b.a.group : null;
+    pill.hidden = !gKey;
+    if (gKey) { pill.style.setProperty('--c', GROUPS[gKey].css); pill.querySelector('span').textContent = GROUPS[gKey].name; }
+    $('infoBondsLabel').textContent = 'Joins';
+    $('infoBonds').innerHTML = [b.a, b.b].map((r) => `<li>${ELEMENTS[r.el].name} ${r.label}</li>`).join('');
+    let note = text;
+    if (b.ester) note += ' This ester bond is the one that breaks when aspirin transfers its acetyl group.';
+    if (b.a === A[13] || b.b === A[13]) note += ' This C=O makes C8 electron-poor, so Ser530 can attack it.';
+    $('infoText').textContent = note;
+  }
+  if (sel.type === 'atom') pill.hidden = false;
+  info.classList.remove('off');
+}
+function clearSelection() { select(null); }
+$('infoClose').addEventListener('click', clearSelection);
+
+function onPick(hit) {
+  if (state.mode === 'explore') select(hit);
+  else if (state.mode === 'groups' && hit?.type === 'atom') setGroup(hit.rec.group);
+  else if (state.mode === 'groups' && hit?.type === 'bond') setGroup(hit.rec.a.group);
+}
+
+function updateHint() {
+  const show = state.mode !== 'transfer' && !state.hintDismissed;
+  hint.classList.toggle('off', !show);
+  if (state.mode === 'groups') hint.textContent = coarse ? 'Tap a group name in the notch, or tap an atom' : 'Click an atom to highlight its group · [ ] to cycle';
+  else hint.textContent = coarse ? 'Drag to rotate · Pinch to zoom · Tap an atom' : 'Drag to rotate · Scroll to zoom · Click an atom or bond';
+}
+function dismissHint() {
+  if (state.hintDismissed) return;
+  state.hintDismissed = true;
+  setTimeout(updateHint, 2500);
+}
+
+let toastTimer = 0;
+function toast(text, color = '#46e0a2') {
+  const el = $('toast');
+  el.textContent = text;
+  el.style.setProperty('--c', color);
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+/* ============================================================
+   Pointer, wheel, keyboard
+   ============================================================ */
+
+const pointers = new Map();
+let pinchStart = null;
+let hoverXY = null, hoverDirty = false;
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), lt: performance.now() });
+  if (pointers.size === 2) {
+    const [p, q] = [...pointers.values()];
+    pinchStart = { d: Math.hypot(p.x - q.x, p.y - q.y), zoom: state.zoomT };
+  }
+  ctrl.vYaw = ctrl.vPitch = 0;
+  if (notchOpen && notchPinned) setNotch(false);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') { hoverXY = { x: e.clientX, y: e.clientY }; hoverDirty = true; }
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const now = performance.now();
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 2 && pinchStart) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    state.zoomT = clamp(pinchStart.zoom * (pinchStart.d / Math.max(d, 1)), 0.4, 2.4);
+    return;
+  }
+  if (!ctrl.dragging && Math.hypot(p.x - p.x0, p.y - p.y0) > 5) {
+    ctrl.dragging = true;
+    canvas.classList.add('dragging');
+    dismissHint();
+  }
+  if (ctrl.dragging) {
+    const k = 0.0065;
+    rotateBy(dx * k, dy * k);
+    const dtm = Math.max(1, now - p.lt) / 1000;
+    ctrl.vYaw = ctrl.vYaw * 0.6 + ((dx * k) / dtm) * 0.4;
+    ctrl.vPitch = ctrl.vPitch * 0.6 + ((dy * k) / dtm) * 0.4;
+  }
+  p.lt = now;
+});
+function endPointer(e) {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+  const wasDrag = ctrl.dragging;
+  if (pointers.size === 0) {
+    ctrl.dragging = false;
+    canvas.classList.remove('dragging');
+    if (performance.now() - p.lt > 90) ctrl.vYaw = ctrl.vPitch = 0;
+  }
+  if (!wasDrag && e.type === 'pointerup' && performance.now() - p.t0 < 600 && Math.hypot(p.x - p.x0, p.y - p.y0) < 6) {
+    onPick(pickAt(e.clientX, e.clientY));
+    dismissHint();
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { hoverXY = null; hoverDirty = true; } });
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  state.zoomT = clamp(state.zoomT * Math.exp(e.deltaY * 0.0011), 0.4, 2.4);
+  dismissHint();
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const k = e.key;
+  if (!$('consent').hidden) { if (k === 'Escape') closeConsent(); return; }
+  const onButton = tag === 'BUTTON';
+  switch (k) {
+    case '1': setMode('explore'); break;
+    case '2': setMode('groups'); break;
+    case '3': setMode('transfer'); break;
+    case ' ':
+      if (onButton) return;
+      e.preventDefault(); toast(togglePlay(), '#ff9a3c'); break;
+    case '[': state.mode === 'groups' ? cycleGroup(-1) : stepStage(-1); break;
+    case ']': state.mode === 'groups' ? cycleGroup(1) : stepStage(1); break;
+    case 'ArrowLeft': rotateBy(-0.18, 0); e.preventDefault(); break;
+    case 'ArrowRight': rotateBy(0.18, 0); e.preventDefault(); break;
+    case 'ArrowUp': rotateBy(0, -0.18); e.preventDefault(); break;
+    case 'ArrowDown': rotateBy(0, 0.18); e.preventDefault(); break;
+    case '+': case '=': state.zoomT = clamp(state.zoomT * 0.85, 0.4, 2.4); break;
+    case '-': case '_': state.zoomT = clamp(state.zoomT / 0.85, 0.4, 2.4); break;
+    case 'r': case 'R': resetView(); break;
+    case 'm': case 'M': setStyle(state.style === 'ball' ? 'space' : 'ball'); break;
+    case 'h': case 'H': setShowH(!state.showH); break;
+    case 'f': case 'F': if (canFullscreen) toggleFullscreen(); break;
+    case 'g': case 'G': $('btnHands').click(); break;
+    case 'Escape': if (notchOpen) setNotch(false); else clearSelection(); break;
+    default: return;
+  }
+  dismissHint();
+});
+
+/* ============================================================
+   Hand tracking (MediaPipe Hand Landmarker, opt-in)
+   ============================================================ */
+
+// Absolute URLs, because the detection worker runs from a blob: URL and can't resolve relative paths.
+const VENDOR = window.__labLocal ? new URL('vendor/', location.href).href : null;
+const MP = VENDOR ? {
+  bundle: `${VENDOR}mediapipe/vision_bundle.mjs`,
+  wasm: `${VENDOR}mediapipe/wasm`,
+  model: `${VENDOR}models/hand_landmarker.task`,
+} : {
+  bundle: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
+  wasm: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+  model: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+};
+
+// Detection runs in a worker so the 3D view keeps its frame rate while the model works.
+const WORKER_SRC = `
+let landmarker = null;
+self.onmessage = async (e) => {
+  const m = e.data;
+  if (m.type === 'init') {
+    try {
+      const vision = await import(m.bundle);
+      const files = await vision.FilesetResolver.forVisionTasks(m.wasm);
+      const opts = (delegate) => ({ baseOptions: { modelAssetPath: m.model, delegate }, runningMode: 'VIDEO', numHands: 2,
+        minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.5 });
+      let delegate = 'GPU';
+      try { landmarker = await vision.HandLandmarker.createFromOptions(files, opts('GPU')); }
+      catch (gpuErr) { delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(files, opts('CPU')); }
+      self.postMessage({ type: 'ready', delegate });
+    } catch (err) {
+      self.postMessage({ type: 'error', message: String((err && err.message) || err) });
+    }
+  } else if (m.type === 'frame') {
+    let res = null;
+    try { res = landmarker.detectForVideo(m.bitmap, m.ts); } catch (err) {}
+    m.bitmap.close();
+    self.postMessage({ type: 'result', ts: m.ts,
+      landmarks: res ? res.landmarks : [],
+      handedness: res ? res.handedness.map((h) => (h[0] ? h[0].categoryName : 'Right')) : [] });
+  }
+};`;
+
+class HandTracker {
+  constructor(video, onResult) {
+    this.video = video;
+    this.onResult = onResult;
+    this.running = false;
+    this.busy = false;
+    this.busySince = 0;
+    this.mode = null;
+  }
+  async start() {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } },
+    });
+    this.video.srcObject = this.stream;
+    try { await this.video.play(); } catch { /* muted inline video starts once data arrives */ }
+    await new Promise((res) => (this.video.readyState >= 2 ? res() : this.video.addEventListener('loadeddata', res, { once: true })));
+    try { await this.initWorker(); this.mode = 'worker'; }
+    catch (err) { console.warn('Hand tracking worker unavailable, using the main thread', err); await this.initMain(); this.mode = 'main'; }
+    this.running = true;
+    this.lastTime = -1;
+    this.loop();
+  }
+  initWorker() {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+      const w = new Worker(url);
+      const timeout = setTimeout(() => { w.terminate(); reject(new Error('Worker timed out')); }, 30000);
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'ready') { clearTimeout(timeout); this.worker = w; this.delegate = m.delegate; resolve(); }
+        else if (m.type === 'error') { clearTimeout(timeout); w.terminate(); reject(new Error(m.message)); }
+        else if (m.type === 'result') { this.busy = false; if (this.running) this.onResult(m, performance.now()); }
+      };
+      w.onerror = (e) => { clearTimeout(timeout); w.terminate(); reject(e); };
+      w.postMessage({ type: 'init', ...MP });
+    });
+  }
+  async initMain() {
+    const vision = await import(MP.bundle);
+    const files = await vision.FilesetResolver.forVisionTasks(MP.wasm);
+    const opts = (delegate) => ({ baseOptions: { modelAssetPath: MP.model, delegate }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.5 });
+    try { this.landmarker = await vision.HandLandmarker.createFromOptions(files, opts('GPU')); }
+    catch { this.landmarker = await vision.HandLandmarker.createFromOptions(files, opts('CPU')); }
+  }
+  loop() {
+    if (!this.running) return;
+    const v = this.video;
+    const next = () => this.loop();
+    if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(next);
+    else requestAnimationFrame(next);
+    if (v.readyState < 2 || v.currentTime === this.lastTime) return;
+    const now = performance.now();
+    if (this.busy && now - this.busySince > 1000) this.busy = false;
+    if (this.busy) return;
+    this.lastTime = v.currentTime;
+    this.busy = true;
+    this.busySince = now;
+    if (this.mode === 'worker') {
+      const w = Math.min(480, v.videoWidth || 480);
+      const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
+      createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' })
+        .catch(() => createImageBitmap(v))
+        .then((bmp) => this.worker.postMessage({ type: 'frame', bitmap: bmp, ts: now }, [bmp]))
+        .catch(() => { this.busy = false; });
+    } else {
+      try {
+        const r = this.landmarker.detectForVideo(v, now);
+        this.onResult({ landmarks: r.landmarks, handedness: r.handedness.map((h) => h[0]?.categoryName || 'Right') }, now);
+      } catch (err) { console.error(err); }
+      this.busy = false;
+    }
+  }
+  stop() {
+    this.running = false;
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.video.srcObject = null;
+    this.worker?.terminate();
+    this.landmarker?.close?.();
+  }
+}
+
+class OneEuro {
+  constructor(minCutoff = 1.2, beta = 6, dCutoff = 1) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.x = null; this.dx = 0; this.t = null; }
+  static alpha(cutoff, dt) { return 1 / (1 + 1 / (2 * Math.PI * cutoff * dt)); }
+  filter(v, t) {
+    if (this.t === null) { this.t = t; this.x = v; return v; }
+    const dt = Math.max((t - this.t) / 1000, 1e-3);
+    this.t = t;
+    this.dx += OneEuro.alpha(this.dCutoff, dt) * ((v - this.x) / dt - this.dx);
+    this.x += OneEuro.alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+
+const HAND_CONN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
+const handVideo = $('handVideo'), pipCanvas = $('pipCanvas'), pipCtx = pipCanvas.getContext('2d');
+const cursorEl = $('handCursor');
+const hs = {
+  tracker: null, on: false, starting: false,
+  hands: {}, primary: null, sens: 1,
+  calib: { cx: 0.5, cy: 0.45, hh: 0.3 },
+  calibrating: null,
+  cursor: { x: innerWidth / 2, y: innerHeight / 2, sx: innerWidth / 2, sy: innerHeight / 2 },
+  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0,
+  rotHist: [], lastActionAt: 0,
+};
+let videoAspect = 4 / 3;
+
+function newHand(key) {
+  return { key, pts: [], fx: [], fy: [], gesture: 'Hand', cand: 'Hand', candN: 0, pinching: false, lastSeen: 0, visible: false,
+    hist: [], palm: { x: 0, y: 0 }, prevPalm: null, size: 0.1, swipeReadyAt: 0, holdKind: null, holdStart: 0, holdAnchor: null, holdFired: false, holdP: 0,
+    pinchStart: 0, pinchFrom: null, pinchLast: null, pinchDragged: false, pinchTarget: null, stableSince: 0 };
+}
+function resetHand(h) {
+  h.fx = Array.from({ length: 21 }, () => new OneEuro());
+  h.fy = Array.from({ length: 21 }, () => new OneEuro());
+  Object.assign(h, { gesture: 'Hand', cand: 'Hand', candN: 0, pinching: false, prevPalm: null, holdKind: null, holdP: 0, holdFired: false, pinchStart: 0, pinchDragged: false });
+  h.hist.length = 0;
+}
+
+const hDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function classify(h, now) {
+  const P = h.pts;
+  const size = hDist(P[0], P[9]) || 0.01;
+  h.size = size;
+  h.palm = [0, 5, 9, 13, 17].reduce((s, i) => ({ x: s.x + P[i].x / 5, y: s.y + P[i].y / 5 }), { x: 0, y: 0 });
+  const reach = (tip, pip) => hDist(P[0], P[tip]) / (hDist(P[0], P[pip]) || 1e-3);
+  const r = [reach(8, 6), reach(12, 10), reach(16, 14), reach(20, 18)];
+  const ext = r.map((v) => v > 1.22), curled = r.map((v) => v < 1.02);
+  const gap = hDist(P[4], P[8]) / size;
+  h.pinching = h.pinching ? gap < 0.42 : gap < 0.26;
+  let g = 'Hand';
+  if (curled.every(Boolean)) g = 'Fist';
+  else if (h.pinching) g = 'Pinch';
+  else if (ext.every(Boolean)) g = 'Open palm';
+  else if (ext[0] && !ext[1] && !ext[2] && !ext[3]) g = 'Point';
+  if (g === h.cand) h.candN++;
+  else { h.cand = g; h.candN = 1; }
+  const prev = h.gesture;
+  if (h.candN >= (g === 'Pinch' ? 2 : 3) && g !== h.gesture) { h.gesture = g; h.stableSince = now; }
+  return prev;
+}
+
+function toScreen(p) {
+  const hh = hs.calib.hh / hs.sens;
+  const hw = hh * (innerWidth / innerHeight);
+  return {
+    x: clamp(((p.x / videoAspect - hs.calib.cx) / (hw / videoAspect)) * 0.5 + 0.5, 0, 1) * innerWidth,
+    y: clamp(((p.y - hs.calib.cy) / hh) * 0.5 + 0.5, 0, 1) * innerHeight,
+  };
+}
+
+function onHandResult(res, now) {
+  const seen = new Set();
+  const n = res.landmarks.length;
+  if (handVideo.videoWidth) videoAspect = handVideo.videoWidth / handVideo.videoHeight;
+  // Follow each hand by where it is, not by MediaPipe's left/right label, which can flip between frames.
+  const wrist = (i) => ({ x: (1 - res.landmarks[i][0].x) * videoAspect, y: res.landmarks[i][0].y });
+  const live = Object.values(hs.hands).filter((h) => now - h.lastSeen < 350 && h.pts.length);
+  const keys = [];
+  if (n === 2 && live.length === 2) {
+    const [a, b] = live;
+    const keep = hDist(wrist(0), a.pts[0]) + hDist(wrist(1), b.pts[0]) <= hDist(wrist(0), b.pts[0]) + hDist(wrist(1), a.pts[0]);
+    keys.push(keep ? a.key : b.key, keep ? b.key : a.key);
+  } else if (n === 1 && live.length >= 1) {
+    keys.push(live.reduce((best, h) => (hDist(wrist(0), h.pts[0]) < hDist(wrist(0), best.pts[0]) ? h : best)).key);
+  } else {
+    for (let i = 0; i < n; i++) keys.push(res.handedness[i] === 'Left' ? 'Left' : 'Right');
+    if (n === 2 && keys[0] === keys[1]) keys[1] = keys[0] === 'Right' ? 'Left' : 'Right';
+  }
+  for (let i = 0; i < n; i++) {
+    const key = keys[i];
+    seen.add(key);
+    const h = hs.hands[key] ||= (() => { const x = newHand(key); resetHand(x); return x; })();
+    if (now - h.lastSeen > 350 || (h.pts.length && hDist(wrist(i), h.pts[0]) > 0.3)) resetHand(h);
+    h.lastSeen = now;
+    h.visible = true;
+    const lms = res.landmarks[i];
+    for (let j = 0; j < 21; j++) {
+      h.pts[j] = { x: h.fx[j].filter((1 - lms[j].x) * videoAspect, now), y: h.fy[j].filter(lms[j].y, now) };
+    }
+    const prevG = classify(h, now);
+    h.prevGesture = prevG;
+  }
+  for (const h of Object.values(hs.hands)) if (!seen.has(h.key)) { if (h.visible && h.gesture === 'Pinch') endPinch(h, now, true); h.visible = false; }
+
+  hs.results++;
+  if (now - hs.fpsStart > 600) { hs.fps = Math.round((hs.results * 1000) / (now - hs.fpsStart)); hs.results = 0; hs.fpsStart = now; }
+
+  const visible = Object.values(hs.hands).filter((h) => h.visible);
+  hs.primary = visible.find((h) => h.key === 'Right') || visible[0] || null;
+  if (hs.calibrating) runCalibration(now);
+  else handActions(visible, now);
+  drawPip(visible);
+  updateHandStatus(visible);
+}
+
+function nav(dir) {
+  if (state.mode === 'transfer') {
+    if (dir < 0 && stageIndex(state.t) === 0 && state.t - STARTS[0] < 0.8) { setMode('groups'); return 'Functional groups'; }
+    stepStage(dir);
+    return `Stage ${stageIndex(state.t) + 1}: ${STAGES[stageIndex(state.t)].title}`;
+  }
+  const order = ['explore', 'groups', 'transfer'];
+  const i = clamp(order.indexOf(state.mode) + dir, 0, 2);
+  setMode(order[i]);
+  return ['Explore', 'Functional groups', 'Acetyl transfer'][i];
+}
+
+function handActions(visible, now) {
+  const both = visible.length === 2 && visible.every((h) => h.gesture === 'Pinch');
+  // Two pinching hands: spread apart to zoom in, bring together to zoom out.
+  if (both) {
+    const [a, b] = visible;
+    const d = hDist(mid(a.pts[4], a.pts[8]), mid(b.pts[4], b.pts[8]));
+    if (!hs.zoom) hs.zoom = { d, z: state.zoomT };
+    state.zoomT = clamp(hs.zoom.z * (hs.zoom.d / Math.max(d, 0.01)), 0.4, 2.4);
+    for (const h of visible) h.pinchDragged = true;
+    return;
+  }
+  hs.zoom = null;
+  const h = hs.primary;
+  if (!h) return;
+  const P = h.pts;
+
+  // Cursor follows the index fingertip.
+  const c = toScreen(P[8]);
+  hs.cursor.x = c.x; hs.cursor.y = c.y;
+  if (h.gesture === 'Point' || h.gesture === 'Hand') {
+    const hit = pickAt(c.x, c.y);
+    state.hover = hit;
+    hs.hoverHist.push({ t: now, hit });
+  }
+  while (hs.hoverHist.length && now - hs.hoverHist[0].t > 600) hs.hoverHist.shift();
+
+  // Pinch: tap selects what you were pointing at; pinch and move rotates.
+  if (h.gesture === 'Pinch' && h.prevGesture !== 'Pinch') {
+    h.pinchStart = now;
+    h.pinchFrom = mid(P[4], P[8]);
+    h.pinchLast = h.pinchFrom;
+    h.pinchDragged = false;
+    const before = hs.hoverHist.filter((e) => now - e.t > 80 && now - e.t < 450 && e.hit).pop();
+    h.pinchTarget = before ? before.hit : null;
+  }
+  if (h.gesture === 'Pinch') {
+    const m = mid(P[4], P[8]);
+    if (!h.pinchDragged && hDist(m, h.pinchFrom) > 0.035) h.pinchDragged = true;
+    if (h.pinchDragged) rotateBy((m.x - h.pinchLast.x) * 4.4 * hs.sens, (m.y - h.pinchLast.y) * 4.4 * hs.sens);
+    h.pinchLast = m;
+  } else if (h.prevGesture === 'Pinch') {
+    endPinch(h, now, false);
+  }
+
+  // Open palm: move to rotate. Fast flicks are swipes, so they don't rotate.
+  if (h.prevPalm && h.gesture === 'Open palm' && now - h.stableSince > 150) {
+    const dx = h.palm.x - h.prevPalm.x, dy = h.palm.y - h.prevPalm.y;
+    const speed = Math.hypot(dx, dy) / Math.max((now - h.prevPalmT) / 1000, 0.008);
+    if (speed < 1.1) {
+      const yaw = dx * 3.4 * hs.sens, pitch = dy * 2.8 * hs.sens;
+      rotateBy(yaw, pitch);
+      hs.rotHist.push({ t: now, yaw, pitch });
+    }
+  }
+  while (hs.rotHist.length && now - hs.rotHist[0].t > 350) hs.rotHist.shift();
+  h.prevPalm = { ...h.palm };
+  h.prevPalmT = now;
+
+  // Swipe: quick horizontal sweep of an open hand.
+  h.hist.push({ x: h.palm.x, y: h.palm.y, t: now });
+  while (h.hist.length && now - h.hist[0].t > 260) h.hist.shift();
+  if ((h.gesture === 'Open palm' || h.gesture === 'Hand') && now > h.swipeReadyAt && h.hist.length > 3) {
+    const a = h.hist[0], b = h.hist[h.hist.length - 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    if (Math.abs(dx) > 0.26 && Math.abs(dy) < Math.abs(dx) * 0.6) {
+      for (const r of hs.rotHist) rotateBy(-r.yaw, -r.pitch);
+      hs.rotHist.length = 0;
+      const label = nav(dx < 0 ? 1 : -1);
+      toast(`${dx < 0 ? 'Swipe left → next' : 'Swipe right → back'} · ${label}`);
+      h.swipeReadyAt = now + 900;
+      h.hist.length = 0;
+      h.holdKind = null;
+    }
+  }
+
+  // Hold still: open palm toggles pause, fist resets the view.
+  if (h.gesture === 'Open palm' || h.gesture === 'Fist') {
+    if (h.holdKind !== h.gesture || !h.holdAnchor || hDist(h.palm, h.holdAnchor) > Math.max(0.02, h.size * 0.22)) {
+      h.holdKind = h.gesture; h.holdStart = now; h.holdAnchor = { ...h.palm }; h.holdFired = false;
+    }
+    h.holdP = clamp((now - h.holdStart) / (h.gesture === 'Fist' ? 800 : 1100), 0, 1);
+    if (h.holdP >= 1 && !h.holdFired) {
+      h.holdFired = true;
+      if (h.gesture === 'Fist') { resetView(); toast('Fist held · view reset', '#ff5a5f'); }
+      else toast(`Palm held · ${togglePlay()}`);
+    }
+  } else { h.holdKind = null; h.holdP = 0; }
+}
+
+function endPinch(h, now, lost) {
+  if (!lost && !h.pinchDragged && now - h.pinchStart < 700) {
+    if (h.pinchTarget) {
+      onPick(h.pinchTarget);
+      toast(h.pinchTarget.type === 'atom' ? `Selected ${h.pinchTarget.rec.label}` : 'Selected bond');
+    } else if (state.mode === 'explore' && state.selected) { clearSelection(); }
+  }
+  h.pinchDragged = false;
+}
+
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function runCalibration(now) {
+  const c = hs.calibrating;
+  const h = hs.primary;
+  if (now - c.start > 8000) { finishCalibration(false); return; }
+  if (!h || !(h.gesture === 'Open palm' || h.gesture === 'Hand')) { c.samples.length = 0; setCalibP(0); return; }
+  c.samples.push({ x: h.palm.x, y: h.palm.y, s: h.size, t: now });
+  const first = c.samples[0];
+  if (c.samples.some((s) => Math.hypot(s.x - first.x, s.y - first.y) > 0.06)) c.samples = [c.samples[c.samples.length - 1]];
+  const p = clamp((now - c.samples[0].t) / 1500, 0, 1);
+  setCalibP(p);
+  if (p >= 1) {
+    const mx = c.samples.reduce((s, q) => s + q.x, 0) / c.samples.length;
+    const my = c.samples.reduce((s, q) => s + q.y, 0) / c.samples.length;
+    const ms = c.samples.reduce((s, q) => s + q.s, 0) / c.samples.length;
+    hs.calib = { cx: mx / videoAspect, cy: my, hh: clamp(ms * 2.6, 0.16, 0.42) };
+    finishCalibration(true);
+  }
+}
+function setCalibP(p) { $('calibRing').style.setProperty('--p', p.toFixed(3)); }
+function startCalibration() {
+  if (!hs.on) return;
+  hs.calibrating = { start: performance.now(), samples: [] };
+  $('calibText').textContent = 'Hold an open hand still, where it feels comfortable to work.';
+  setCalibP(0);
+  $('calib').hidden = false;
+}
+function finishCalibration(ok) {
+  hs.calibrating = null;
+  $('calib').hidden = true;
+  toast(ok ? 'Calibrated · your hand now spans the screen' : 'Calibration timed out · show an open hand and try again', ok ? '#46e0a2' : '#ff9a3c');
+}
+
+function drawPip(visible) {
+  const w = pipCanvas.clientWidth, h = pipCanvas.clientHeight;
+  if (pipCanvas.width !== w * 2) { pipCanvas.width = w * 2; pipCanvas.height = h * 2; }
+  pipCtx.setTransform(2, 0, 0, 2, 0, 0);
+  pipCtx.clearRect(0, 0, w, h);
+  // The PiP video is object-fit: cover; map landmarks the same way.
+  const s = Math.max(w / videoAspect, h);
+  const ox = (w - videoAspect * s) / 2, oy = (h - s) / 2;
+  for (const hand of visible) {
+    const col = hand.gesture === 'Pinch' ? '#ff9a3c' : hand.gesture === 'Fist' ? '#ff5a5f' : '#46e0a2';
+    pipCtx.strokeStyle = col;
+    pipCtx.lineWidth = 1.6;
+    pipCtx.beginPath();
+    for (const [a, b] of HAND_CONN) {
+      pipCtx.moveTo(hand.pts[a].x * s + ox, hand.pts[a].y * s + oy);
+      pipCtx.lineTo(hand.pts[b].x * s + ox, hand.pts[b].y * s + oy);
+    }
+    pipCtx.stroke();
+    pipCtx.fillStyle = '#fff';
+    for (const i of [4, 8, 12, 16, 20]) { pipCtx.beginPath(); pipCtx.arc(hand.pts[i].x * s + ox, hand.pts[i].y * s + oy, 2.2, 0, Math.PI * 2); pipCtx.fill(); }
+  }
+}
+
+const GESTURE_TEXT = { 'Open palm': 'Open palm · rotate', Point: 'Point · highlight', Pinch: 'Pinch · select / rotate', Fist: 'Fist · hold to reset', Hand: 'Hand' };
+function updateHandStatus(visible) {
+  const h = hs.primary;
+  const two = visible.length === 2 && visible.every((x) => x.gesture === 'Pinch');
+  const g = two ? 'Two-hand zoom' : h ? GESTURE_TEXT[h.gesture] : '';
+  $('pipText').textContent = h ? 'Hand detected' : 'Show your hand';
+  $('pipDot').dataset.on = String(!!h);
+  $('handsDot').dataset.on = String(!!h);
+  $('handsStatus').textContent = h ? `Hand detected${visible.length > 1 ? ' ×2' : ''}` : 'No hand in view';
+  $('handsGesture').textContent = g;
+  $('pipGesture').textContent = g || 'Processed on this device';
+  $('pipFps').textContent = `${hs.fps} fps`;
+  $('handsFps').textContent = `${hs.fps} fps · ${hs.tracker?.mode === 'worker' ? 'worker' : 'main thread'}`;
+  $('statusDot').dataset.tone = h ? 'live' : 'wait';
+  cursorEl.hidden = !h;
+  if (h) cursorEl.dataset.g = h.gesture;
+}
+
+async function enableHands() {
+  const err = $('consentError');
+  err.hidden = true;
+  if (!navigator.mediaDevices?.getUserMedia || typeof Worker === 'undefined') {
+    err.textContent = 'Hand tracking isn’t supported in this browser. Mouse, touch and keyboard controls still work.';
+    err.hidden = false;
+    return;
+  }
+  $('consent').hidden = true;
+  hs.starting = true;
+  $('pip').classList.remove('off');
+  $('handsRow').hidden = false;
+  $('btnHands').setAttribute('aria-pressed', 'true');
+  $('pipText').textContent = 'Starting camera…';
+  $('handsStatus').textContent = 'Starting camera…';
+  $('statusDot').dataset.tone = 'wait';
+  measureNotch();
+  hs.tracker = new HandTracker(handVideo, onHandResult);
+  try {
+    const camReady = hs.tracker.start();
+    $('pipText').textContent = 'Loading hand model…';
+    $('handsStatus').textContent = 'Loading hand model…';
+    await camReady;
+    hs.on = true;
+    toast('Hand controls on');
+  } catch (e) {
+    console.error(e);
+    disableHands();
+    const msg = {
+      NotAllowedError: 'Camera access was blocked. Allow the camera for this page in the address bar, then try again.',
+      NotFoundError: 'No camera was found. Connect a webcam and try again.',
+      NotReadableError: 'The camera is being used by another app. Close it and try again.',
+    }[e?.name] || (VENDOR
+      ? 'Hand tracking couldn’t start in this browser. Try the latest Chrome.'
+      : 'Hand tracking couldn’t start. Check your internet connection (the hand model downloads once), then try again.');
+    err.textContent = msg + ' Mouse, touch and keyboard controls still work.';
+    err.hidden = false;
+    $('consent').hidden = false;
+  } finally {
+    hs.starting = false;
+  }
+}
+function disableHands() {
+  hs.tracker?.stop();
+  hs.tracker = null;
+  hs.on = false;
+  hs.calibrating = null;
+  $('calib').hidden = true;
+  hs.hands = {};
+  hs.primary = null;
+  state.hover = null;
+  $('pip').classList.add('off');
+  $('handsRow').hidden = true;
+  cursorEl.hidden = true;
+  $('btnHands').setAttribute('aria-pressed', 'false');
+  $('statusDot').dataset.tone = '';
+  measureNotch();
+}
+function closeConsent() { $('consent').hidden = true; }
+
+$('btnHands').addEventListener('click', () => {
+  if (hs.on || hs.starting) { disableHands(); toast('Camera off', '#8d95ae'); return; }
+  // The claude.ai viewer (which provides window.claude) never grants camera access.
+  const hosted = !!window.claude;
+  $('consentError').textContent = hosted ? 'This shared link can’t use the webcam, so hand controls are off here. Mouse, touch and keyboard controls all work.' : '';
+  $('consentError').hidden = !hosted;
+  $('consentOk').hidden = hosted;
+  $('consent').hidden = false;
+  (hosted ? $('consentCancel') : $('consentOk')).focus();
+});
+$('consentOk').addEventListener('click', enableHands);
+$('consentCancel').addEventListener('click', closeConsent);
+$('btnCamOff').addEventListener('click', () => { disableHands(); toast('Camera off', '#8d95ae'); });
+$('btnCalib').addEventListener('click', startCalibration);
+$('sens').addEventListener('input', (e) => { hs.sens = Number(e.target.value); });
+
+function updateCursor(dt) {
+  if (cursorEl.hidden) return;
+  const k = damp(18, dt);
+  hs.cursor.sx += (hs.cursor.x - hs.cursor.sx) * k;
+  hs.cursor.sy += (hs.cursor.y - hs.cursor.sy) * k;
+  cursorEl.style.transform = `translate(${hs.cursor.sx.toFixed(1)}px, ${hs.cursor.sy.toFixed(1)}px)`;
+  cursorEl.style.setProperty('--p', (hs.primary?.holdP || 0).toFixed(3));
+}
+
+/* ============================================================
+   Frame loop
+   ============================================================ */
+
+const capStage = $('capStage'), capTitle = $('capTitle'), capText = $('capText'), capChip = $('capChip'), medical = $('medical');
+let lastStageShown = -1;
+function updateCaption() {
+  if (state.mode !== 'transfer') return;
+  const i = stageIndex(state.t);
+  if (i !== lastStageShown) {
+    lastStageShown = i;
+    capStage.textContent = `Stage ${i + 1} of 5`;
+    capTitle.textContent = STAGES[i].title;
+    capText.textContent = STAGES[i].text;
+    capChip.hidden = i < 2;
+    $('notchLabel').textContent = `STAGE ${i + 1}/5`;
+  }
+  medical.hidden = !(i === 4 && state.tl.u > 0.62);
+  dotBars.forEach((b, k) => {
+    const p = k < i ? 1 : k > i ? 0 : clamp((state.t - STARTS[k]) / (DUR[k] + HOLD), 0, 1);
+    b.style.setProperty('--p', p.toFixed(3));
+  });
+}
+
+const leaderLine = $('leaderLine'), leaderDot = $('leaderDot');
+const gl = { x: 0, y: 0, init: false };
+function updateGroupLabel(dt) {
+  const on = state.mode === 'groups';
+  leaderLine.setAttribute('opacity', on ? '0.7' : '0');
+  leaderDot.setAttribute('opacity', on ? '1' : '0');
+  if (!on) { gl.init = false; return; }
+  const members = aspirinAtoms.filter((r) => r.group === state.group && (r.el !== 'H' || state.showH));
+  const c = members.reduce((s, r) => s.add(localPos(r, _v1)), V()).divideScalar(members.length);
+  screenOf(c, scr);
+  const ax = scr.x, ay = scr.y;
+  screenOf(V(), scr);
+  const narrow = innerWidth < 720;
+  const w = groupLabel.offsetWidth, h = groupLabel.offsetHeight;
+  let tx, ty;
+  if (narrow) {
+    tx = 16; ty = innerHeight - h - 24;
+  } else {
+    const dx = ax - scr.x, dy = ay - scr.y;
+    const len = Math.hypot(dx, dy) || 1;
+    tx = ax + (dx / len) * 150 + (dx >= 0 ? 30 : -w - 30);
+    ty = ay + (dy / len) * 90 - h / 2;
+    tx = clamp(tx, 20, innerWidth - w - 20);
+    ty = clamp(ty, 80, innerHeight - h - 24);
+  }
+  const k = gl.init ? damp(8, dt) : 1;
+  gl.x += (tx - gl.x) * k; gl.y += (ty - gl.y) * k; gl.init = true;
+  groupLabel.style.transform = `translate(${gl.x.toFixed(1)}px, ${gl.y.toFixed(1)}px)`;
+  const col = GROUPS[state.group].css;
+  const ex = gl.x + (ax > gl.x + w / 2 ? w : 0), ey = clamp(ay, gl.y + 12, gl.y + h - 12);
+  leaderLine.setAttribute('x1', ax); leaderLine.setAttribute('y1', ay);
+  leaderLine.setAttribute('x2', narrow ? ax : ex); leaderLine.setAttribute('y2', narrow ? ay : ey);
+  leaderLine.setAttribute('stroke', col);
+  leaderDot.setAttribute('cx', ax); leaderDot.setAttribute('cy', ay);
+  leaderDot.setAttribute('fill', col);
+}
+
+let last = performance.now();
+let firstFrame = true;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const time = now / 1000;
+
+  if (state.mode === 'transfer') {
+    if (state.playing) {
+      state.t = Math.min(T_TOTAL, state.t + dt * state.speed);
+      if (state.t >= T_TOTAL) { state.playing = false; syncPlay(); }
+    }
+    evalTimeline();
+  }
+  state.enzymeVis += ((state.mode === 'transfer' ? 1 : 0) - state.enzymeVis) * damp(3, dt);
+  state.styleMix += ((state.style === 'space' ? 1 : 0) - state.styleMix) * damp(6, dt);
+
+  // Mouse hover picking, once per frame at most.
+  if (hoverDirty && !ctrl.dragging && !hs.on) {
+    hoverDirty = false;
+    state.hover = hoverXY ? pickAt(hoverXY.x, hoverXY.y) : null;
+    canvas.classList.toggle('can-pick', !!state.hover);
+  }
+
+  updatePoses(dt);
+  computeTargets(time);
+  applyVisuals(dt);
+  updateBonds();
+
+  // Rotation: inertia, auto-rotate, then glide toward the target orientation.
+  if (!ctrl.dragging) {
+    if (Math.abs(ctrl.vYaw) + Math.abs(ctrl.vPitch) > 1e-4) {
+      rotateBy(ctrl.vYaw * dt, ctrl.vPitch * dt);
+      const f = Math.exp(-3.5 * dt);
+      ctrl.vYaw *= f; ctrl.vPitch *= f;
+    }
+    if (state.autoRotate && state.mode !== 'transfer') rotateBy(0.22 * dt, 0);
+  }
+  ctrl.q.slerp(ctrl.qT, damp(8, dt));
+  root.quaternion.copy(ctrl.q);
+
+  // Camera.
+  if (state.mode === 'transfer') {
+    stageFraming(framing);
+    framing.p.y -= framing.d * 0.07; // lift the scene clear of the caption card
+  } else {
+    framing.p.set(0, 0, 0);
+    framing.d = 17.5 * (1 + 0.3 * state.styleMix);
+  }
+  state.zoom += (state.zoomT - state.zoom) * damp(7, dt);
+  cam.target.lerp(framing.p, damp(4, dt));
+  cam.dist += (framing.d * state.zoom * aspectFactor() - cam.dist) * damp(4, dt);
+  _v1.copy(cam.target).applyQuaternion(root.quaternion);
+  camera.position.copy(_v1).addScaledVector(cam.dir, cam.dist);
+  camera.lookAt(_v1);
+  camera.updateMatrixWorld();
+
+  // Enzyme fade.
+  channel.material.uniforms.uOpacity.value = state.enzymeVis;
+  for (const m of enzymeMats) m.opacity = m.userData.baseOpacity * state.enzymeVis;
+  enzymeG.visible = state.enzymeVis > 0.01;
+  plinth.material.opacity = 0.22 * (1 - state.enzymeVis);
+
+  updateEffects(time);
+  updateTags(time);
+  updateCaption();
+  updateGroupLabel(dt);
+  updateCursor(dt);
+
+  if (!reduceMotion) {
+    particles.rotation.y += dt * 0.012;
+    particles.rotation.x = Math.sin(time * 0.05) * 0.05;
+    for (const hx of hexes.children) { hx.rotation.z += hx.userData.spin * dt; hx.rotation.x += hx.userData.spin * 0.4 * dt; }
+  }
+  if (state.mode !== 'transfer' && lastStageShown !== -1) { lastStageShown = -1; $('notchLabel').textContent = 'ASPIRIN LAB'; }
+  if (!hs.on && !hs.starting) {
+    const tone = state.mode === 'transfer' && state.playing ? 'play' : '';
+    if ($('statusDot').dataset.tone !== tone) $('statusDot').dataset.tone = tone;
+  }
+
+  composer.render(dt);
+
+  if (firstFrame) {
+    firstFrame = false;
+    window.__labReady = true;
+    clearTimeout(window.__labTimer);
+    $('loader').classList.add('done');
+  }
+}
+
+document.body.dataset.mode = state.mode;
+resize();
+syncPlay();
+updateHint();
+cam.dist = 17.5 * aspectFactor() * 1.6;
+// Compile every material up front so the first frames don't stutter.
+try { await renderer.compileAsync(scene, camera); } catch { /* compile lazily instead */ }
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
