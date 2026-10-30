@@ -364,9 +364,11 @@ button { font: inherit; color: inherit; }
   overflow: hidden;
   padding: 0;
 }
-.pip-video { position: relative; aspect-ratio: 4 / 3; background: #000; }
-.pip-video video, .pip-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.pip-video video { object-fit: cover; transform: scaleX(-1); opacity: 0.85; }
+#handCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* The webcam feed is drawn as the 3D backdrop; this element supplies frames. It sits full-size behind the
+   canvas because Chrome stops delivering frames to videos it considers invisible. */
+#handVideo { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: -1; pointer-events: none; }
+.hand-hover { box-shadow: 0 0 0 2px var(--live), 0 0 22px -4px var(--live) !important; color: var(--fg) !important; }
 .pip-status { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; }
 .pip-status .mono { font-size: 11px; color: var(--muted); }
 #pipGesture { font-family: var(--mono); font-size: 11px; color: var(--live); }
@@ -444,7 +446,7 @@ button { font: inherit; color: inherit; }
   #caption { bottom: max(12px, env(safe-area-inset-bottom, 0px)); padding: 14px; }
   .cap-text { font-size: 15px; }
   .cap-chip { margin-left: 0; }
-  #pip { width: 132px; top: calc(max(12px, env(safe-area-inset-top, 0px)) + 44px); right: 12px; bottom: auto; }
+  #pip { width: auto; top: calc(max(12px, env(safe-area-inset-top, 0px)) + 96px); right: 12px; bottom: auto; }
   .pip-status { grid-template-columns: auto 1fr; padding: 6px 8px; font-size: 11px; }
   .pip-status .mono, .pip-msg { display: none; }
   #groupLabel { width: auto; }
@@ -474,7 +476,9 @@ button { font: inherit; color: inherit; }
 </head>
 <body>
 <canvas id="scene" tabindex="0" aria-label="3D model of aspirin. Drag to rotate, scroll to zoom, click an atom to inspect it."></canvas>
+<video id="handVideo" playsinline muted aria-hidden="true"></video>
 <div class="vignette"></div>
+<canvas id="handCanvas" aria-hidden="true"></canvas>
 <svg id="leaders" aria-hidden="true"><line id="leaderLine" x1="0" y1="0" x2="0" y2="0" stroke-width="1.2" opacity="0"/><circle id="leaderDot" r="3.5" opacity="0"/></svg>
 <div id="tags" aria-hidden="true"></div>
 
@@ -588,8 +592,7 @@ button { font: inherit; color: inherit; }
 
 <div class="card fade-card" id="hint">Drag to rotate · Scroll to zoom · Click an atom</div>
 
-<aside class="card fade-card off" id="pip" aria-label="Hand tracking camera">
-  <div class="pip-video"><video id="handVideo" playsinline muted></video><canvas id="pipCanvas"></canvas></div>
+<aside class="card fade-card off" id="pip" aria-label="Hand tracking status">
   <div class="pip-status">
     <span class="live-dot" id="pipDot"></span>
     <span id="pipText">Starting camera…</span>
@@ -615,7 +618,7 @@ button { font: inherit; color: inherit; }
     </dl>
     <p class="error" id="consentError" hidden></p>
     <div class="actions">
-      <button class="tool" type="button" id="consentCancel">Not now</button>
+      <button class="tool" type="button" id="consentCancel">Use mouse instead</button>
       <button class="tool primary" type="button" id="consentOk">ENABLE HAND CONTROLS</button>
     </div>
   </div>
@@ -808,6 +811,8 @@ function resize() {
   composer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  camBg.material.uniforms.uScreen.value = w / h;
+  sizeHandCanvas();
   measureNotch();
 }
 addEventListener('resize', resize);
@@ -850,7 +855,42 @@ const dome = new THREE.Mesh(
       }`,
   })
 );
+dome.renderOrder = -200;
 scene.add(dome);
+
+// Webcam backdrop: a full-screen quad drawn behind everything, mirrored and fitted like object-fit: cover.
+// Dimmed and slightly desaturated so the molecule stays the focus and the video never triggers bloom.
+const camBg = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.ShaderMaterial({
+    depthTest: false,
+    depthWrite: false,
+    uniforms: {
+      tVideo: { value: null }, uHasVideo: { value: 0 }, uMix: { value: 0 },
+      uScreen: { value: innerWidth / innerHeight }, uVideo: { value: 4 / 3 },
+    },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 1.0, 1.0); }',
+    fragmentShader: `precision mediump float;
+      varying vec2 vUv; uniform sampler2D tVideo; uniform float uHasVideo; uniform float uMix; uniform float uScreen; uniform float uVideo;
+      void main(){
+        vec2 uv = vUv;
+        if (uScreen > uVideo) uv.y = 0.5 + (uv.y - 0.5) * (uVideo / uScreen);
+        else uv.x = 0.5 + (uv.x - 0.5) * (uScreen / uVideo);
+        uv.x = 1.0 - uv.x;
+        vec3 base = mix(vec3(0.0003, 0.0003, 0.0009), vec3(0.0021, 0.0034, 0.012), smoothstep(0.1, 0.95, vUv.y));
+        vec3 cam = uHasVideo > 0.5 ? texture2D(tVideo, uv).rgb : base;
+        float l = dot(cam, vec3(0.2126, 0.7152, 0.0722));
+        cam = mix(vec3(l), cam, 0.82) * vec3(0.88, 0.92, 1.06) * 0.5;
+        cam *= 0.5 + 0.5 * smoothstep(0.98, 0.3, distance(vUv, vec2(0.5)));
+        gl_FragColor = vec4(mix(base, cam, uMix), 1.0);
+      }`,
+  })
+);
+camBg.frustumCulled = false;
+camBg.renderOrder = -100;
+camBg.visible = false;
+scene.add(camBg);
+let camTex = null;
 
 function radialTexture(stops) {
   const c = document.createElement('canvas');
@@ -1303,6 +1343,7 @@ const state = {
   zoom: 1,
   zoomT: 1,
   enzymeVis: 0,
+  bgMix: 0,
   hintDismissed: false,
   tl: { stage: 0, u: 0, a: 0, aCur: 0, hg: 0, hgCur: 0, h1: 0, h1Cur: 0, sal: 1, salCur: 1 },
 };
@@ -1833,19 +1874,22 @@ notchFace.addEventListener('click', () => {
   else setNotch(true, true);
 });
 document.addEventListener('pointermove', (e) => {
-  if (e.pointerType !== 'mouse' || ctrl.dragging) return;
+  if (e.pointerType === 'mouse' && !ctrl.dragging) notchProximity(e.clientX, e.clientY);
+});
+// Opens the notch when a pointer (mouse or hand cursor) comes near it, and closes it after the pointer leaves.
+function notchProximity(x, y) {
   const r = notch.getBoundingClientRect();
   const cx = r.left + r.width / 2;
   const near = notchOpen
-    ? e.clientX > r.left - 36 && e.clientX < r.right + 36 && e.clientY < r.bottom + 36
-    : Math.abs(e.clientX - cx) < 170 && e.clientY < 70;
+    ? x > r.left - 36 && x < r.right + 36 && y < r.bottom + 36
+    : Math.abs(x - cx) < 170 && y < 70;
   if (near) {
     clearTimeout(notchCloseTimer); notchCloseTimer = 0;
     if (!notchOpen) setNotch(true);
   } else if (notchOpen && !notchPinned && !notchCloseTimer) {
     notchCloseTimer = setTimeout(() => { notchCloseTimer = 0; setNotch(false); }, 380);
   }
-});
+}
 
 /* ============================================================
    UI: modes and tools
@@ -2043,6 +2087,12 @@ function onPick(hit) {
 }
 
 function updateHint() {
+  if (hs.on || hs.starting) {
+    const on = !!hs.hint && state.mode !== 'transfer';
+    hint.classList.toggle('off', !on);
+    if (on) hint.textContent = hs.hint;
+    return;
+  }
   const show = state.mode !== 'transfer' && !state.hintDismissed;
   hint.classList.toggle('off', !show);
   if (state.mode === 'groups') hint.textContent = coarse ? 'Tap a group name in the notch, or tap an atom' : 'Click an atom to highlight its group · [ ] to cycle';
@@ -2225,7 +2275,7 @@ class HandTracker {
   async start() {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } },
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } },
     });
     this.video.srcObject = this.stream;
     try { await this.video.play(); } catch { /* muted inline video starts once data arrives */ }
@@ -2310,13 +2360,15 @@ class OneEuro {
 }
 
 const HAND_CONN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
-const handVideo = $('handVideo'), pipCanvas = $('pipCanvas'), pipCtx = pipCanvas.getContext('2d');
+const handVideo = $('handVideo'), handCanvas = $('handCanvas'), hctx = handCanvas.getContext('2d');
 const cursorEl = $('handCursor');
+const HAND_GUIDE = 'Open hand: rotate · Point, then pinch: select or press · Swipe: next · Hold palm still: pause';
 const hs = {
-  tracker: null, on: false, starting: false,
+  tracker: null, on: false, starting: false, camLive: false,
   hands: {}, primary: null, sens: 1,
-  calib: { cx: 0.5, cy: 0.45, hh: 0.3 },
+  calib: null, // null = cursor sits exactly on your fingertip in the video; set by Calibrate
   calibrating: null,
+  hint: '', everSeen: false, guideUntil: 0,
   cursor: { x: innerWidth / 2, y: innerHeight / 2, sx: innerWidth / 2, sy: innerHeight / 2 },
   hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0,
   rotHist: [], lastActionAt: 0,
@@ -2359,13 +2411,27 @@ function classify(h, now) {
   return prev;
 }
 
+// The region of the camera frame that the screen shows. By default it matches the cover-fitted backdrop,
+// so the cursor lands on your real fingertip.
+function calibBox() {
+  return hs.calib || { cx: 0.5, cy: 0.5, hh: 0.5 * Math.min(1, videoAspect / (innerWidth / innerHeight)) };
+}
+
 function toScreen(p) {
-  const hh = hs.calib.hh / hs.sens;
+  const box = calibBox();
+  const hh = box.hh / hs.sens;
   const hw = hh * (innerWidth / innerHeight);
   return {
-    x: clamp(((p.x / videoAspect - hs.calib.cx) / (hw / videoAspect)) * 0.5 + 0.5, 0, 1) * innerWidth,
-    y: clamp(((p.y - hs.calib.cy) / hh) * 0.5 + 0.5, 0, 1) * innerHeight,
+    x: clamp(((p.x / videoAspect - box.cx) / (hw / videoAspect)) * 0.5 + 0.5, 0, 1) * innerWidth,
+    y: clamp(((p.y - box.cy) / hh) * 0.5 + 0.5, 0, 1) * innerHeight,
   };
+}
+
+// Where a landmark appears on the backdrop video (mirrored, object-fit: cover).
+function coverMap(p) {
+  const as = innerWidth / innerHeight, nx = p.x / videoAspect;
+  if (as > videoAspect) return { x: nx * innerWidth, y: ((p.y - 0.5) * (as / videoAspect) + 0.5) * innerHeight };
+  return { x: ((nx - 0.5) * (videoAspect / as) + 0.5) * innerWidth, y: p.y * innerHeight };
 }
 
 function onHandResult(res, now) {
@@ -2409,8 +2475,7 @@ function onHandResult(res, now) {
   hs.primary = visible.find((h) => h.key === 'Right') || visible[0] || null;
   if (hs.calibrating) runCalibration(now);
   else handActions(visible, now);
-  drawPip(visible);
-  updateHandStatus(visible);
+  updateHandStatus(visible, now);
 }
 
 function nav(dir) {
@@ -2441,24 +2506,28 @@ function handActions(visible, now) {
   if (!h) return;
   const P = h.pts;
 
-  // Cursor follows the index fingertip.
+  // Cursor follows the index fingertip. Over a button it highlights the button; over the molecule, an atom.
   const c = toScreen(P[8]);
   hs.cursor.x = c.x; hs.cursor.y = c.y;
-  if (h.gesture === 'Point' || h.gesture === 'Hand') {
-    const hit = pickAt(c.x, c.y);
+  notchProximity(c.x, c.y);
+  if (h.gesture !== 'Pinch') {
+    const btn = buttonAt(c.x, c.y);
+    setHandHover(btn);
+    const hit = !btn && (h.gesture === 'Point' || h.gesture === 'Hand') ? pickAt(c.x, c.y) : null;
     state.hover = hit;
-    hs.hoverHist.push({ t: now, hit });
+    hs.hoverHist.push({ t: now, hit, btn });
   }
   while (hs.hoverHist.length && now - hs.hoverHist[0].t > 600) hs.hoverHist.shift();
 
-  // Pinch: tap selects what you were pointing at; pinch and move rotates.
+  // Pinch: a quick tap presses the button or selects the atom you were pointing at; pinch and move rotates.
+  // The target comes from just before the fingers closed, because closing them moves the fingertip.
   if (h.gesture === 'Pinch' && h.prevGesture !== 'Pinch') {
     h.pinchStart = now;
     h.pinchFrom = mid(P[4], P[8]);
     h.pinchLast = h.pinchFrom;
     h.pinchDragged = false;
-    const before = hs.hoverHist.filter((e) => now - e.t > 80 && now - e.t < 450 && e.hit).pop();
-    h.pinchTarget = before ? before.hit : null;
+    const before = hs.hoverHist.filter((e) => now - e.t > 80 && now - e.t < 450 && (e.hit || e.btn)).pop();
+    h.pinchTarget = before ? (before.btn ? { dom: before.btn } : before.hit) : null;
   }
   if (h.gesture === 'Pinch') {
     const m = mid(P[4], P[8]);
@@ -2516,7 +2585,11 @@ function handActions(visible, now) {
 
 function endPinch(h, now, lost) {
   if (!lost && !h.pinchDragged && now - h.pinchStart < 700) {
-    if (h.pinchTarget) {
+    if (h.pinchTarget?.dom) {
+      const el = h.pinchTarget.dom;
+      el.click();
+      toast(`Pressed ${(el.getAttribute('aria-label') || el.textContent).trim().replace(/\s+/g, ' ')}`);
+    } else if (h.pinchTarget) {
       onPick(h.pinchTarget);
       toast(h.pinchTarget.type === 'atom' ? `Selected ${h.pinchTarget.rec.label}` : 'Selected bond');
     } else if (state.mode === 'explore' && state.selected) { clearSelection(); }
@@ -2525,6 +2598,18 @@ function endPinch(h, now, lost) {
 }
 
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function buttonAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el?.closest?.('button:not([disabled])') || null;
+}
+let handHoverEl = null;
+function setHandHover(el) {
+  if (el === handHoverEl) return;
+  handHoverEl?.classList.remove('hand-hover');
+  handHoverEl = el;
+  el?.classList.add('hand-hover');
+}
 
 function runCalibration(now) {
   const c = hs.calibrating;
@@ -2558,31 +2643,51 @@ function finishCalibration(ok) {
   toast(ok ? 'Calibrated · your hand now spans the screen' : 'Calibration timed out · show an open hand and try again', ok ? '#46e0a2' : '#ff9a3c');
 }
 
-function drawPip(visible) {
-  const w = pipCanvas.clientWidth, h = pipCanvas.clientHeight;
-  if (pipCanvas.width !== w * 2) { pipCanvas.width = w * 2; pipCanvas.height = h * 2; }
-  pipCtx.setTransform(2, 0, 0, 2, 0, 0);
-  pipCtx.clearRect(0, 0, w, h);
-  // The PiP video is object-fit: cover; map landmarks the same way.
-  const s = Math.max(w / videoAspect, h);
-  const ox = (w - videoAspect * s) / 2, oy = (h - s) / 2;
+function sizeHandCanvas() {
+  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  handCanvas.width = Math.round(innerWidth * pr);
+  handCanvas.height = Math.round(innerHeight * pr);
+  hctx.setTransform(pr, 0, 0, pr, 0, 0);
+}
+
+// Hand skeletons drawn over your real hands in the backdrop, every frame.
+let handsDrawn = false;
+function drawHands() {
+  const visible = hs.camLive ? Object.values(hs.hands).filter((h) => h.visible && h.pts.length === 21) : [];
+  if (!visible.length && !handsDrawn) return;
+  hctx.clearRect(0, 0, innerWidth, innerHeight);
+  handsDrawn = visible.length > 0;
   for (const hand of visible) {
     const col = hand.gesture === 'Pinch' ? '#ff9a3c' : hand.gesture === 'Fist' ? '#ff5a5f' : '#46e0a2';
-    pipCtx.strokeStyle = col;
-    pipCtx.lineWidth = 1.6;
-    pipCtx.beginPath();
-    for (const [a, b] of HAND_CONN) {
-      pipCtx.moveTo(hand.pts[a].x * s + ox, hand.pts[a].y * s + oy);
-      pipCtx.lineTo(hand.pts[b].x * s + ox, hand.pts[b].y * s + oy);
+    const P = hand.pts.map(coverMap);
+    hctx.globalAlpha = 0.8;
+    hctx.strokeStyle = col;
+    hctx.lineWidth = 2.2;
+    hctx.lineCap = 'round';
+    hctx.beginPath();
+    for (const [a, b] of HAND_CONN) { hctx.moveTo(P[a].x, P[a].y); hctx.lineTo(P[b].x, P[b].y); }
+    hctx.stroke();
+    hctx.lineWidth = 1.5;
+    hctx.fillStyle = '#0b0f1c';
+    for (let i = 0; i < 21; i++) {
+      if (i % 4 === 0 && i) continue;
+      hctx.beginPath(); hctx.arc(P[i].x, P[i].y, 3, 0, Math.PI * 2); hctx.fill(); hctx.stroke();
     }
-    pipCtx.stroke();
-    pipCtx.fillStyle = '#fff';
-    for (const i of [4, 8, 12, 16, 20]) { pipCtx.beginPath(); pipCtx.arc(hand.pts[i].x * s + ox, hand.pts[i].y * s + oy, 2.2, 0, Math.PI * 2); pipCtx.fill(); }
+    hctx.globalAlpha = 1;
+    hctx.shadowColor = col;
+    hctx.shadowBlur = 12;
+    hctx.fillStyle = '#ffffff';
+    for (const i of [4, 8, 12, 16, 20]) { hctx.beginPath(); hctx.arc(P[i].x, P[i].y, 4.5, 0, Math.PI * 2); hctx.fill(); }
+    hctx.shadowBlur = 0;
   }
 }
 
 const GESTURE_TEXT = { 'Open palm': 'Open palm · rotate', Point: 'Point · highlight', Pinch: 'Pinch · select / rotate', Fist: 'Fist · hold to reset', Hand: 'Hand' };
-function updateHandStatus(visible) {
+function updateHandStatus(visible, now = performance.now()) {
+  // Hint: ask for a hand until one appears, then show the gesture guide for a while.
+  if (visible.length && !hs.everSeen) { hs.everSeen = true; hs.guideUntil = now + 25000; }
+  const hintText = !hs.everSeen ? 'Raise your hand in front of the camera' : now < hs.guideUntil ? HAND_GUIDE : '';
+  if (hintText !== hs.hint) { hs.hint = hintText; updateHint(); }
   const h = hs.primary;
   const two = visible.length === 2 && visible.every((x) => x.gesture === 'Pinch');
   const g = two ? 'Two-hand zoom' : h ? GESTURE_TEXT[h.gesture] : '';
@@ -2599,16 +2704,42 @@ function updateHandStatus(visible) {
   if (h) cursorEl.dataset.g = h.gesture;
 }
 
-async function enableHands() {
+// The claude.ai copy sets __labHosted: that viewer never grants camera access.
+const isHosted = () => !!(window.__labHosted || window.claude);
+
+function attachVideo() {
+  if (!camTex) {
+    camTex = new THREE.VideoTexture(handVideo);
+    camTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const u = camBg.material.uniforms;
+  u.tVideo.value = camTex;
+  u.uHasVideo.value = 1;
+  u.uVideo.value = handVideo.videoWidth / handVideo.videoHeight || 4 / 3;
+  videoAspect = u.uVideo.value;
+  hs.camLive = true;
+}
+
+async function enableHands({ auto = false } = {}) {
   const err = $('consentError');
   err.hidden = true;
-  if (!navigator.mediaDevices?.getUserMedia || typeof Worker === 'undefined') {
-    err.textContent = 'Hand tracking isn’t supported in this browser. Mouse, touch and keyboard controls still work.';
+  const unsupported = !navigator.mediaDevices?.getUserMedia || typeof Worker === 'undefined';
+  if (isHosted() || unsupported) {
+    if (auto) return; // stay quietly in mouse mode
+    err.textContent = isHosted()
+      ? 'This shared link can’t use the webcam, so hand controls are off here. Mouse, touch and keyboard controls all work.'
+      : 'Hand tracking isn’t supported in this browser. Mouse, touch and keyboard controls still work.';
     err.hidden = false;
+    $('consentOk').hidden = true;
+    $('consent').hidden = false;
+    $('consentCancel').focus();
     return;
   }
   $('consent').hidden = true;
   hs.starting = true;
+  hs.everSeen = false;
+  hs.hint = 'Starting camera…';
+  updateHint();
   $('pip').classList.remove('off');
   $('handsRow').hidden = false;
   $('btnHands').setAttribute('aria-pressed', 'true');
@@ -2616,14 +2747,16 @@ async function enableHands() {
   $('handsStatus').textContent = 'Starting camera…';
   $('statusDot').dataset.tone = 'wait';
   measureNotch();
-  hs.tracker = new HandTracker(handVideo, onHandResult);
-  try {
-    const camReady = hs.tracker.start();
+  handVideo.addEventListener('loadeddata', () => {
+    attachVideo();
     $('pipText').textContent = 'Loading hand model…';
     $('handsStatus').textContent = 'Loading hand model…';
-    await camReady;
+  }, { once: true });
+  hs.tracker = new HandTracker(handVideo, onHandResult);
+  try {
+    await hs.tracker.start();
     hs.on = true;
-    toast('Hand controls on');
+    toast('Hand controls on · video stays on this device');
   } catch (e) {
     console.error(e);
     disableHands();
@@ -2636,15 +2769,22 @@ async function enableHands() {
       : 'Hand tracking couldn’t start. Check your internet connection (the hand model downloads once), then try again.');
     err.textContent = msg + ' Mouse, touch and keyboard controls still work.';
     err.hidden = false;
+    $('consentOk').hidden = false;
+    $('consentOk').textContent = 'TRY AGAIN';
     $('consent').hidden = false;
   } finally {
     hs.starting = false;
+    updateHint();
   }
 }
 function disableHands() {
   hs.tracker?.stop();
   hs.tracker = null;
   hs.on = false;
+  hs.camLive = false;
+  hs.calib = null;
+  hs.hint = '';
+  setHandHover(null);
   hs.calibrating = null;
   $('calib').hidden = true;
   hs.hands = {};
@@ -2656,20 +2796,15 @@ function disableHands() {
   $('btnHands').setAttribute('aria-pressed', 'false');
   $('statusDot').dataset.tone = '';
   measureNotch();
+  updateHint();
 }
 function closeConsent() { $('consent').hidden = true; }
 
 $('btnHands').addEventListener('click', () => {
   if (hs.on || hs.starting) { disableHands(); toast('Camera off', '#8d95ae'); return; }
-  // The claude.ai viewer (which provides window.claude) never grants camera access.
-  const hosted = !!window.claude;
-  $('consentError').textContent = hosted ? 'This shared link can’t use the webcam, so hand controls are off here. Mouse, touch and keyboard controls all work.' : '';
-  $('consentError').hidden = !hosted;
-  $('consentOk').hidden = hosted;
-  $('consent').hidden = false;
-  (hosted ? $('consentCancel') : $('consentOk')).focus();
+  enableHands();
 });
-$('consentOk').addEventListener('click', enableHands);
+$('consentOk').addEventListener('click', () => enableHands());
 $('consentCancel').addEventListener('click', closeConsent);
 $('btnCamOff').addEventListener('click', () => { disableHands(); toast('Camera off', '#8d95ae'); });
 $('btnCalib').addEventListener('click', startCalibration);
@@ -2782,7 +2917,8 @@ function frame(now) {
       const f = Math.exp(-3.5 * dt);
       ctrl.vYaw *= f; ctrl.vPitch *= f;
     }
-    if (state.autoRotate && state.mode !== 'transfer') rotateBy(0.22 * dt, 0);
+    // Auto-rotation pauses while a hand is in view, so it never fights your hand.
+    if (state.autoRotate && state.mode !== 'transfer' && !(hs.on && hs.primary)) rotateBy(0.22 * dt, 0);
   }
   ctrl.q.slerp(ctrl.qT, damp(8, dt));
   root.quaternion.copy(ctrl.q);
@@ -2804,10 +2940,18 @@ function frame(now) {
   camera.updateMatrixWorld();
 
   // Enzyme fade.
-  channel.material.uniforms.uOpacity.value = state.enzymeVis;
-  for (const m of enzymeMats) m.opacity = m.userData.baseOpacity * state.enzymeVis;
+  // Over the webcam backdrop the protein turns more see-through, so you stay visible behind it.
+  channel.material.uniforms.uOpacity.value = state.enzymeVis * (1 - 0.4 * state.bgMix);
+  for (const m of enzymeMats) m.opacity = m.userData.baseOpacity * state.enzymeVis * (1 - 0.55 * state.bgMix);
   enzymeG.visible = state.enzymeVis > 0.01;
-  plinth.material.opacity = 0.22 * (1 - state.enzymeVis);
+  // Webcam backdrop fade.
+  state.bgMix += ((hs.camLive ? 1 : 0) - state.bgMix) * damp(2.5, dt);
+  camBg.visible = state.bgMix > 0.002;
+  camBg.material.uniforms.uMix.value = state.bgMix;
+  dome.visible = state.bgMix < 0.995;
+  particles.material.opacity = 0.5 * (1 - 0.6 * state.bgMix);
+  plinth.material.opacity = 0.22 * (1 - state.enzymeVis) * (1 - state.bgMix);
+  drawHands();
 
   updateEffects(time);
   updateTags(time);
@@ -2844,6 +2988,8 @@ cam.dist = 17.5 * aspectFactor() * 1.6;
 // Compile every material up front so the first frames don't stutter.
 try { await renderer.compileAsync(scene, camera); } catch { /* compile lazily instead */ }
 requestAnimationFrame(frame);
+// Video first: start the camera straight away. The browser asks permission; if it's refused, mouse mode stays.
+enableHands({ auto: true });
 </script>
 </body>
 </html>
