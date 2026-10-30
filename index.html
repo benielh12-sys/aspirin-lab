@@ -17,7 +17,7 @@
   --fg: #e9ecf6;
   --muted: #8d95ae;
   --dim: #5d6582;
-  --glass: rgba(7, 9, 17, 0.74);
+  --glass: rgba(7, 9, 17, 0.9);
   --line: rgba(160, 175, 255, 0.12);
   --line-hi: rgba(160, 175, 255, 0.26);
   --violet: #8b7bff;
@@ -100,9 +100,7 @@ button { font: inherit; color: inherit; }
   width: var(--panel-w);
   height: var(--open-h, 320px);
   border-radius: 0 0 30px 30px;
-  background: rgba(2, 3, 8, 0.86);
-  backdrop-filter: blur(26px) saturate(1.3);
-  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  background: rgba(2, 3, 8, 0.95);
   box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(150, 165, 255, 0.1), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 .notch-face {
@@ -221,8 +219,6 @@ button { font: inherit; color: inherit; }
   background: var(--glass);
   border: 1px solid var(--line);
   border-radius: 18px;
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.9);
 }
 .fade-card { transition: opacity 0.35s var(--ease-out), transform 0.45s var(--ease-out); }
@@ -364,10 +360,9 @@ button { font: inherit; color: inherit; }
   overflow: hidden;
   padding: 0;
 }
-#handCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-/* The webcam feed is drawn as the 3D backdrop; this element supplies frames. It sits full-size behind the
-   canvas because Chrome stops delivering frames to videos it considers invisible. */
-#handVideo { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: -1; pointer-events: none; }
+.pip-video { position: relative; aspect-ratio: 4 / 3; background: #000; }
+.pip-video video, .pip-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pip-video video { object-fit: cover; transform: scaleX(-1); }
 .hand-hover { box-shadow: 0 0 0 2px var(--live), 0 0 22px -4px var(--live) !important; color: var(--fg) !important; }
 .pip-status { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; }
 .pip-status .mono { font-size: 11px; color: var(--muted); }
@@ -446,7 +441,7 @@ button { font: inherit; color: inherit; }
   #caption { bottom: max(12px, env(safe-area-inset-bottom, 0px)); padding: 14px; }
   .cap-text { font-size: 15px; }
   .cap-chip { margin-left: 0; }
-  #pip { width: auto; top: calc(max(12px, env(safe-area-inset-top, 0px)) + 96px); right: 12px; bottom: auto; }
+  #pip { width: 140px; top: calc(max(12px, env(safe-area-inset-top, 0px)) + 96px); right: 12px; bottom: auto; }
   .pip-status { grid-template-columns: auto 1fr; padding: 6px 8px; font-size: 11px; }
   .pip-status .mono, .pip-msg { display: none; }
   #groupLabel { width: auto; }
@@ -476,9 +471,7 @@ button { font: inherit; color: inherit; }
 </head>
 <body>
 <canvas id="scene" tabindex="0" aria-label="3D model of aspirin. Drag to rotate, scroll to zoom, click an atom to inspect it."></canvas>
-<video id="handVideo" playsinline muted aria-hidden="true"></video>
 <div class="vignette"></div>
-<canvas id="handCanvas" aria-hidden="true"></canvas>
 <svg id="leaders" aria-hidden="true"><line id="leaderLine" x1="0" y1="0" x2="0" y2="0" stroke-width="1.2" opacity="0"/><circle id="leaderDot" r="3.5" opacity="0"/></svg>
 <div id="tags" aria-hidden="true"></div>
 
@@ -592,7 +585,8 @@ button { font: inherit; color: inherit; }
 
 <div class="card fade-card" id="hint">Drag to rotate · Scroll to zoom · Click an atom</div>
 
-<aside class="card fade-card off" id="pip" aria-label="Hand tracking status">
+<aside class="card fade-card off" id="pip" aria-label="Hand tracking camera">
+  <div class="pip-video"><video id="handVideo" playsinline muted></video><canvas id="pipCanvas"></canvas></div>
   <div class="pip-status">
     <span class="live-dot" id="pipDot"></span>
     <span id="pipText">Starting camera…</span>
@@ -783,7 +777,16 @@ try {
   window.__labFail('This browser could not start WebGL 3D graphics. Try the latest Chrome, Edge or Safari, and make sure hardware acceleration is on.');
   throw err;
 }
-const pixelRatio = () => Math.min(window.devicePixelRatio || 1, 2);
+// Quality levels, from best to lightest. A governor in the frame loop steps through them to hold a smooth frame rate.
+const QUALITY = [
+  { pr: 1.5, msaa: 4, bloom: true },
+  { pr: 1.25, msaa: 2, bloom: true },
+  { pr: 1, msaa: 2, bloom: true },
+  { pr: 1, msaa: 0, bloom: false },
+  { pr: 0.75, msaa: 0, bloom: false },
+];
+const perf = { level: coarse ? 2 : 0, sum: 0, n: 0, windowStart: performance.now(), lastChange: performance.now() + 2500, good: 0 };
+const pixelRatio = () => Math.min(window.devicePixelRatio || 1, QUALITY[perf.level].pr);
 renderer.setPixelRatio(pixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -796,10 +799,11 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.45;
 
-const composerTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+const composerTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY[perf.level].msaa });
 const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.45, 0.92);
+bloom.enabled = QUALITY[perf.level].bloom;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -811,11 +815,34 @@ function resize() {
   composer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  camBg.material.uniforms.uScreen.value = w / h;
-  sizeHandCanvas();
   measureNotch();
 }
 addEventListener('resize', resize);
+
+function applyQuality() {
+  const q = QUALITY[perf.level];
+  bloom.enabled = q.bloom;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+    if (rt.samples !== q.msaa) { rt.samples = q.msaa; rt.dispose(); }
+  }
+  resize();
+  document.documentElement.dataset.quality = String(perf.level);
+}
+
+// Once a second: if frames average slower than ~48 fps, drop a level; after several smooth seconds, try one level up.
+function trackPerf(frameMs, now) {
+  perf.sum += frameMs;
+  perf.n++;
+  if (now - perf.windowStart < 1000) return;
+  const avg = perf.sum / perf.n;
+  perf.sum = 0; perf.n = 0; perf.windowStart = now;
+  if (document.hidden || now < perf.lastChange) return;
+  if (avg > 21 && perf.level < QUALITY.length - 1) {
+    perf.level++; perf.lastChange = now + 1500; perf.good = 0; applyQuality();
+  } else if (avg < 14 && perf.level > 0) {
+    if (++perf.good >= 6) { perf.level--; perf.lastChange = now + 6000; perf.good = 0; applyQuality(); }
+  } else perf.good = 0;
+}
 
 canvas.addEventListener('webglcontextlost', (e) => {
   e.preventDefault();
@@ -831,66 +858,51 @@ const rimViolet = new THREE.DirectionalLight(0xa070ff, 1.7);
 rimViolet.position.set(7, -3, -5);
 scene.add(key, rimBlue, rimViolet, new THREE.HemisphereLight(0x8090ff, 0x0a0812, 0.35));
 
-// Background dome: deep navy with soft blue and violet glows.
+// Background: a slowly flowing nebula. Domain-warped noise drifts with time, so the scene loops forever without
+// repeating visibly. Values stay dim (well under the bloom threshold) so the molecule keeps the focus.
 const dome = new THREE.Mesh(
   new THREE.SphereGeometry(400, 48, 24),
   new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
+      uTime: { value: 0 },
       cTop: { value: new THREE.Color(0x070b1d) },
       cBottom: { value: new THREE.Color(0x010103) },
-      cA: { value: new THREE.Color(0x2a3a9a) },
-      cB: { value: new THREE.Color(0x4a2a8a) },
+      cBlue: { value: new THREE.Vector3(0.05, 0.09, 0.42) },
+      cViolet: { value: new THREE.Vector3(0.2, 0.06, 0.36) },
+      cTeal: { value: new THREE.Vector3(0.02, 0.22, 0.24) },
     },
     vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `precision mediump float;
-      varying vec3 vDir; uniform vec3 cTop; uniform vec3 cBottom; uniform vec3 cA; uniform vec3 cB;
+    fragmentShader: `precision highp float;
+      varying vec3 vDir;
+      uniform float uTime; uniform vec3 cTop; uniform vec3 cBottom; uniform vec3 cBlue; uniform vec3 cViolet; uniform vec3 cTeal;
+      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float noise(vec3 x) {
+        vec3 i = floor(x), f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+                   mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+      }
+      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
       void main(){
-        float h = vDir.y * 0.5 + 0.5;
-        vec3 col = mix(cBottom, cTop, smoothstep(0.15, 0.95, h));
-        col += cA * pow(max(dot(vDir, normalize(vec3(-0.55, 0.45, -0.7))), 0.0), 5.0) * 0.18;
-        col += cB * pow(max(dot(vDir, normalize(vec3(0.75, -0.15, -0.65))), 0.0), 7.0) * 0.16;
+        vec3 d = normalize(vDir);
+        float t = uTime * 0.03;
+        float n1 = fbm(d * 2.2 + vec3(t, -t * 0.6, t * 0.4));
+        float n2 = fbm(d * 3.6 + vec3(-t * 0.8, t * 0.5, 3.0) + n1 * 1.6);
+        vec3 col = mix(cBottom, cTop, smoothstep(0.1, 0.95, d.y * 0.5 + 0.5));
+        col += cBlue * smoothstep(0.42, 0.85, n2) * 0.22;
+        col += cViolet * smoothstep(0.5, 0.88, n1) * 0.17;
+        col += cTeal * pow(smoothstep(0.55, 0.95, n1 * n2 * 1.7), 2.0) * 0.08;
+        vec3 cell = floor(d * 380.0);
+        float star = step(0.9986, hash(cell));
+        col += vec3(0.55, 0.65, 1.0) * star * (0.25 + 0.2 * sin(uTime * 1.7 + hash(cell + 3.0) * 40.0));
         gl_FragColor = vec4(col, 1.0);
       }`,
   })
 );
 dome.renderOrder = -200;
 scene.add(dome);
-
-// Webcam backdrop: a full-screen quad drawn behind everything, mirrored and fitted like object-fit: cover.
-// Dimmed and slightly desaturated so the molecule stays the focus and the video never triggers bloom.
-const camBg = new THREE.Mesh(
-  new THREE.PlaneGeometry(2, 2),
-  new THREE.ShaderMaterial({
-    depthTest: false,
-    depthWrite: false,
-    uniforms: {
-      tVideo: { value: null }, uHasVideo: { value: 0 }, uMix: { value: 0 },
-      uScreen: { value: innerWidth / innerHeight }, uVideo: { value: 4 / 3 },
-    },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 1.0, 1.0); }',
-    fragmentShader: `precision mediump float;
-      varying vec2 vUv; uniform sampler2D tVideo; uniform float uHasVideo; uniform float uMix; uniform float uScreen; uniform float uVideo;
-      void main(){
-        vec2 uv = vUv;
-        if (uScreen > uVideo) uv.y = 0.5 + (uv.y - 0.5) * (uVideo / uScreen);
-        else uv.x = 0.5 + (uv.x - 0.5) * (uScreen / uVideo);
-        uv.x = 1.0 - uv.x;
-        vec3 base = mix(vec3(0.0003, 0.0003, 0.0009), vec3(0.0021, 0.0034, 0.012), smoothstep(0.1, 0.95, vUv.y));
-        vec3 cam = uHasVideo > 0.5 ? texture2D(tVideo, uv).rgb : base;
-        float l = dot(cam, vec3(0.2126, 0.7152, 0.0722));
-        cam = mix(vec3(l), cam, 0.82) * vec3(0.88, 0.92, 1.06) * 0.5;
-        cam *= 0.5 + 0.5 * smoothstep(0.98, 0.3, distance(vUv, vec2(0.5)));
-        gl_FragColor = vec4(mix(base, cam, uMix), 1.0);
-      }`,
-  })
-);
-camBg.frustumCulled = false;
-camBg.renderOrder = -100;
-camBg.visible = false;
-scene.add(camBg);
-let camTex = null;
 
 function radialTexture(stops) {
   const c = document.createElement('canvas');
@@ -907,40 +919,91 @@ function radialTexture(stops) {
 const softTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.45)'], [1, 'rgba(255,255,255,0)']]);
 const ringTex = radialTexture([[0, 'rgba(255,255,255,0)'], [0.62, 'rgba(255,255,255,0)'], [0.78, 'rgba(255,255,255,1)'], [0.9, 'rgba(255,255,255,0.25)'], [1, 'rgba(255,255,255,0)']]);
 
-// Ambient particles: slow drift in a shell around the scene.
+// Drifting motes: they rise, sway and twinkle, and wrap from top to bottom so the motion loops seamlessly.
+// All of it happens in the vertex shader, so it costs no JavaScript per frame.
 const particles = (() => {
-  const n = coarse ? 380 : 700;
-  const arr = new Float32Array(n * 3);
+  const n = coarse ? 320 : 650;
+  const pos = new Float32Array(n * 3), seed = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    const r = 28 + Math.random() * 70;
-    const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-    arr[i * 3] = r * Math.sin(ph) * Math.cos(th);
-    arr[i * 3 + 1] = r * Math.cos(ph) * 0.7;
-    arr[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+    const r = 26 + Math.random() * 64, th = Math.random() * Math.PI * 2;
+    pos[i * 3] = Math.cos(th) * r;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 80;
+    pos[i * 3 + 2] = Math.sin(th) * r - 10;
+    seed[i] = Math.random();
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-    size: 0.32, map: softTex, color: 0x8ea0ff, transparent: true, opacity: 0.5,
-    depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uTime: { value: 0 }, uScale: { value: 1 }, uOpacity: { value: 1 } },
+    vertexShader: `attribute float aSeed; uniform float uTime; uniform float uScale; varying float vAlpha; varying float vSeed;
+      void main(){
+        vec3 p = position;
+        p.y = mod(position.y + uTime * (0.5 + aSeed * 1.3) + 40.0, 80.0) - 40.0;
+        p.x += sin(uTime * 0.25 + aSeed * 40.0) * 1.6;
+        p.z += cos(uTime * 0.2 + aSeed * 23.0) * 1.2;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = (1.2 + aSeed * 2.6) * uScale * (70.0 / -mv.z);
+        vAlpha = (0.3 + 0.7 * abs(sin(uTime * (0.4 + aSeed * 0.9) + aSeed * 20.0))) * smoothstep(40.0, 30.0, abs(p.y));
+        vSeed = aSeed;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `precision mediump float; uniform float uOpacity; varying float vAlpha; varying float vSeed;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.0, d);
+        vec3 col = mix(vec3(0.45, 0.55, 1.0), vec3(0.72, 0.5, 1.0), vSeed);
+        gl_FragColor = vec4(col * a * vAlpha * 0.55 * uOpacity, 1.0);
+      }`,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.frustumCulled = false;
   scene.add(pts);
   return pts;
 })();
 
-// Faint benzene silhouettes floating far behind the scene.
-const hexes = new THREE.Group();
-for (let i = 0; i < 9; i++) {
-  const pts = [];
-  for (let k = 0; k <= 6; k++) pts.push(V(Math.cos((k / 6) * Math.PI * 2) * 2.6, Math.sin((k / 6) * Math.PI * 2) * 2.6, 0));
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7f8cff, transparent: true, opacity: 0.035 + Math.random() * 0.03 }));
-  const a = (i / 9) * Math.PI * 2 + Math.random() * 0.4;
-  line.position.set(Math.cos(a) * (80 + Math.random() * 25), (Math.random() - 0.5) * 60, -60 + Math.sin(a) * 30);
-  line.rotation.set(Math.random() * 3, Math.random() * 3, 0);
-  line.userData.spin = (Math.random() - 0.5) * 0.12;
-  hexes.add(line);
+// Ghost molecules: faint ball-and-stick shapes (benzene, water, CO₂, methane) drifting and tumbling far
+// behind the scene on slow orbits, so the background reads as a molecular world.
+const ghosts = (() => {
+  const group = new THREE.Group();
+  const ring = (r) => Array.from({ length: 6 }, (_, k) => [Math.cos((k / 6) * Math.PI * 2) * r, Math.sin((k / 6) * Math.PI * 2) * r, 0]);
+  const shapes = [
+    { atoms: [...ring(1.4), ...ring(2.5)], bonds: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [0, 6], [1, 7], [2, 8], [3, 9], [4, 10], [5, 11]] },
+    { atoms: [[0, 0, 0], [0.95, 0.6, 0], [-0.95, 0.6, 0]], bonds: [[0, 1], [0, 2]] },
+    { atoms: [[0, 0, 0], [1.2, 0, 0], [-1.2, 0, 0]], bonds: [[0, 1], [0, 2]] },
+    { atoms: [[0, 0, 0], [0.9, 0.9, 0.9], [-0.9, -0.9, 0.9], [-0.9, 0.9, -0.9], [0.9, -0.9, -0.9]], bonds: [[0, 1], [0, 2], [0, 3], [0, 4]] },
+  ];
+  const atomGeo = new THREE.SphereGeometry(0.32, 12, 8);
+  const atomMat = new THREE.MeshBasicMaterial({ color: 0x6f86ff, transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending });
+  const bondMat = new THREE.LineBasicMaterial({ color: 0x8d7bff, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending });
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < 9; i++) {
+    const s = shapes[i % shapes.length];
+    const g = new THREE.Group();
+    const inst = new THREE.InstancedMesh(atomGeo, atomMat, s.atoms.length);
+    s.atoms.forEach((p, k) => inst.setMatrixAt(k, m4.makeTranslation(...p)));
+    const pts = s.bonds.flatMap(([a, b]) => [V(...s.atoms[a]), V(...s.atoms[b])]);
+    g.add(inst, new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), bondMat));
+    g.scale.setScalar(1.1 + (i % 3) * 0.35);
+    g.userData = { radius: 70 + (i % 4) * 10, angle: (i / 9) * Math.PI * 2, speed: 0.02 + (i % 3) * 0.008, y: ((i * 37) % 50) - 25, bob: 2 + (i % 2) * 2, spin: new THREE.Vector3(0.11 + i * 0.01, 0.07, 0.05 - i * 0.008) };
+    group.add(g);
+  }
+  scene.add(group);
+  return group;
+})();
+
+function animateBackground(time) {
+  dome.material.uniforms.uTime.value = time;
+  particles.material.uniforms.uTime.value = time;
+  particles.material.uniforms.uScale.value = renderer.getPixelRatio();
+  for (const g of ghosts.children) {
+    const u = g.userData;
+    const a = u.angle + time * u.speed;
+    g.position.set(Math.cos(a) * u.radius, u.y + Math.sin(time * 0.3 + u.angle) * u.bob, Math.sin(a) * u.radius * 0.5 - 70);
+    g.rotation.set(time * u.spin.x, time * u.spin.y, time * u.spin.z);
+  }
 }
-scene.add(hexes);
 
 // A soft pool of light under the molecule, like an exhibit plinth.
 const plinth = new THREE.Mesh(
@@ -967,7 +1030,8 @@ const ownGroups = [aspirinG, acetylG, aaG];
 const sphereGeo = new THREE.SphereGeometry(1, 40, 28);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false);
 const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-const makeMat = (color, extra = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.32, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.25, ...extra });
+// Standard (not physical/clearcoat) shading: nearly the same look at a fraction of the GPU cost per pixel.
+const makeMat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.27, metalness: 0, envMapIntensity: 1.15, ...extra });
 
 const atoms = [];
 const bonds = [];
@@ -1343,7 +1407,6 @@ const state = {
   zoom: 1,
   zoomT: 1,
   enzymeVis: 0,
-  bgMix: 0,
   hintDismissed: false,
   tl: { stage: 0, u: 0, a: 0, aCur: 0, hg: 0, hgCur: 0, h1: 0, h1Cur: 0, sal: 1, salCur: 1 },
 };
@@ -1511,9 +1574,12 @@ function computeTargets(time) {
   }
 }
 
+// Returns true while any atom size, opacity or bond visibility is still changing (bond geometry then needs updating).
 function applyVisuals(dt) {
   const k = damp(9, dt), ks = damp(7, dt);
+  let moving = false;
   for (const r of atoms) {
+    if (Math.abs(r.scT - r.sc) > 1e-4 || Math.abs(r.opT - r.op) > 1e-3) moving = true;
     r.glow += (r.glowT - r.glow) * k;
     r.gc.lerp(r.gcT, k);
     r.op += (r.opT - r.op) * k;
@@ -1528,6 +1594,7 @@ function applyVisuals(dt) {
     r.mesh.scale.setScalar(Math.max(r.sc, 0.0001));
   }
   for (const b of bonds) {
+    if (Math.abs(b.visT - b.vis) > 1e-4) moving = true;
     b.glow += (b.glowT - b.glow) * k;
     b.gc.lerp(b.gcT, k);
     b.vis += (b.visT - b.vis) * ks;
@@ -1549,6 +1616,7 @@ function applyVisuals(dt) {
       b.dashMat.emissive.copy(b.a.gc).multiplyScalar(b.a.glow * 0.4);
     }
   }
+  return moving;
 }
 
 /* ============================================================
@@ -2235,6 +2303,10 @@ const MP = VENDOR ? {
   model: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
 };
 
+// Which processor runs the hand model. The CPU is the default: on the GPU it competes with the 3D rendering and
+// tracking drops to a few updates a second. ?delegate=gpu overrides it for testing.
+const PREFER_DELEGATE = (new URLSearchParams(location.search).get('delegate') || 'cpu').toUpperCase() === 'GPU' ? 'GPU' : 'CPU';
+
 // Detection runs in a worker so the 3D view keeps its frame rate while the model works.
 const WORKER_SRC = `
 let landmarker = null;
@@ -2246,18 +2318,19 @@ self.onmessage = async (e) => {
       const files = await vision.FilesetResolver.forVisionTasks(m.wasm);
       const opts = (delegate) => ({ baseOptions: { modelAssetPath: m.model, delegate }, runningMode: 'VIDEO', numHands: 2,
         minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.5 });
-      let delegate = 'GPU';
-      try { landmarker = await vision.HandLandmarker.createFromOptions(files, opts('GPU')); }
-      catch (gpuErr) { delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(files, opts('CPU')); }
+      let delegate = m.prefer || 'GPU';
+      try { landmarker = await vision.HandLandmarker.createFromOptions(files, opts(delegate)); }
+      catch (firstErr) { delegate = delegate === 'GPU' ? 'CPU' : 'GPU'; landmarker = await vision.HandLandmarker.createFromOptions(files, opts(delegate)); }
       self.postMessage({ type: 'ready', delegate });
     } catch (err) {
       self.postMessage({ type: 'error', message: String((err && err.message) || err) });
     }
   } else if (m.type === 'frame') {
     let res = null;
+    const t0 = performance.now();
     try { res = landmarker.detectForVideo(m.bitmap, m.ts); } catch (err) {}
     m.bitmap.close();
-    self.postMessage({ type: 'result', ts: m.ts,
+    self.postMessage({ type: 'result', ts: m.ts, took: performance.now() - t0,
       landmarks: res ? res.landmarks : [],
       handedness: res ? res.handedness.map((h) => (h[0] ? h[0].categoryName : 'Right')) : [] });
   }
@@ -2275,7 +2348,7 @@ class HandTracker {
   async start() {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } },
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } },
     });
     this.video.srcObject = this.stream;
     try { await this.video.play(); } catch { /* muted inline video starts once data arrives */ }
@@ -2298,7 +2371,7 @@ class HandTracker {
         else if (m.type === 'result') { this.busy = false; if (this.running) this.onResult(m, performance.now()); }
       };
       w.onerror = (e) => { clearTimeout(timeout); w.terminate(); reject(e); };
-      w.postMessage({ type: 'init', ...MP });
+      w.postMessage({ type: 'init', ...MP, prefer: PREFER_DELEGATE });
     });
   }
   async initMain() {
@@ -2323,7 +2396,7 @@ class HandTracker {
     this.busy = true;
     this.busySince = now;
     if (this.mode === 'worker') {
-      const w = Math.min(480, v.videoWidth || 480);
+      const w = Math.min(400, v.videoWidth || 400);
       const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
       createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' })
         .catch(() => createImageBitmap(v))
@@ -2332,7 +2405,7 @@ class HandTracker {
     } else {
       try {
         const r = this.landmarker.detectForVideo(v, now);
-        this.onResult({ landmarks: r.landmarks, handedness: r.handedness.map((h) => h[0]?.categoryName || 'Right') }, now);
+        this.onResult({ landmarks: r.landmarks, handedness: r.handedness.map((h) => h[0]?.categoryName || 'Right'), ts: now }, performance.now());
       } catch (err) { console.error(err); }
       this.busy = false;
     }
@@ -2347,7 +2420,8 @@ class HandTracker {
 }
 
 class OneEuro {
-  constructor(minCutoff = 1.2, beta = 6, dCutoff = 1) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.x = null; this.dx = 0; this.t = null; }
+  // Low cutoff keeps a still hand steady; the high beta opens the filter up as soon as the hand moves, so it doesn't lag.
+  constructor(minCutoff = 1.7, beta = 14, dCutoff = 1) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.x = null; this.dx = 0; this.t = null; }
   static alpha(cutoff, dt) { return 1 / (1 + 1 / (2 * Math.PI * cutoff * dt)); }
   filter(v, t) {
     if (this.t === null) { this.t = t; this.x = v; return v; }
@@ -2360,17 +2434,20 @@ class OneEuro {
 }
 
 const HAND_CONN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
-const handVideo = $('handVideo'), handCanvas = $('handCanvas'), hctx = handCanvas.getContext('2d');
+const handVideo = $('handVideo'), pipCanvas = $('pipCanvas'), pipCtx = pipCanvas.getContext('2d');
 const cursorEl = $('handCursor');
 const HAND_GUIDE = 'Open hand: rotate · Point, then pinch: select or press · Swipe: next · Hold palm still: pause';
+// By default the middle of the camera frame maps to the whole screen, so small, comfortable hand movements
+// reach every corner. Calibrate replaces this with a box measured around your own hand.
+const DEFAULT_CALIB = { cx: 0.5, cy: 0.45, hh: 0.3 };
 const hs = {
-  tracker: null, on: false, starting: false, camLive: false,
+  tracker: null, on: false, starting: false,
   hands: {}, primary: null, sens: 1,
-  calib: null, // null = cursor sits exactly on your fingertip in the video; set by Calibrate
+  calib: null,
   calibrating: null,
   hint: '', everSeen: false, guideUntil: 0,
   cursor: { x: innerWidth / 2, y: innerHeight / 2, sx: innerWidth / 2, sy: innerHeight / 2 },
-  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0,
+  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0, lagSum: 0, lagN: 0, lag: 0,
   rotHist: [], lastActionAt: 0,
 };
 let videoAspect = 4 / 3;
@@ -2407,14 +2484,12 @@ function classify(h, now) {
   if (g === h.cand) h.candN++;
   else { h.cand = g; h.candN = 1; }
   const prev = h.gesture;
-  if (h.candN >= (g === 'Pinch' ? 2 : 3) && g !== h.gesture) { h.gesture = g; h.stableSince = now; }
+  if (h.candN >= 2 && g !== h.gesture) { h.gesture = g; h.stableSince = now; }
   return prev;
 }
 
-// The region of the camera frame that the screen shows. By default it matches the cover-fitted backdrop,
-// so the cursor lands on your real fingertip.
 function calibBox() {
-  return hs.calib || { cx: 0.5, cy: 0.5, hh: 0.5 * Math.min(1, videoAspect / (innerWidth / innerHeight)) };
+  return hs.calib || DEFAULT_CALIB;
 }
 
 function toScreen(p) {
@@ -2425,13 +2500,6 @@ function toScreen(p) {
     x: clamp(((p.x / videoAspect - box.cx) / (hw / videoAspect)) * 0.5 + 0.5, 0, 1) * innerWidth,
     y: clamp(((p.y - box.cy) / hh) * 0.5 + 0.5, 0, 1) * innerHeight,
   };
-}
-
-// Where a landmark appears on the backdrop video (mirrored, object-fit: cover).
-function coverMap(p) {
-  const as = innerWidth / innerHeight, nx = p.x / videoAspect;
-  if (as > videoAspect) return { x: nx * innerWidth, y: ((p.y - 0.5) * (as / videoAspect) + 0.5) * innerHeight };
-  return { x: ((nx - 0.5) * (videoAspect / as) + 0.5) * innerWidth, y: p.y * innerHeight };
 }
 
 function onHandResult(res, now) {
@@ -2469,6 +2537,9 @@ function onHandResult(res, now) {
   for (const h of Object.values(hs.hands)) if (!seen.has(h.key)) { if (h.visible && h.gesture === 'Pinch') endPinch(h, now, true); h.visible = false; }
 
   hs.results++;
+  // Latency: from the moment the camera frame was grabbed to the moment its result arrived here.
+  if (res.ts) { hs.lagSum += now - res.ts; hs.lagN++; }
+  if (hs.lagN >= 15) { hs.lag = Math.round(hs.lagSum / hs.lagN); hs.lagSum = 0; hs.lagN = 0; }
   if (now - hs.fpsStart > 600) { hs.fps = Math.round((hs.results * 1000) / (now - hs.fpsStart)); hs.results = 0; hs.fpsStart = now; }
 
   const visible = Object.values(hs.hands).filter((h) => h.visible);
@@ -2643,42 +2714,28 @@ function finishCalibration(ok) {
   toast(ok ? 'Calibrated · your hand now spans the screen' : 'Calibration timed out · show an open hand and try again', ok ? '#46e0a2' : '#ff9a3c');
 }
 
-function sizeHandCanvas() {
-  const pr = Math.min(window.devicePixelRatio || 1, 2);
-  handCanvas.width = Math.round(innerWidth * pr);
-  handCanvas.height = Math.round(innerHeight * pr);
-  hctx.setTransform(pr, 0, 0, pr, 0, 0);
-}
-
-// Hand skeletons drawn over your real hands in the backdrop, every frame.
-let handsDrawn = false;
-function drawHands() {
-  const visible = hs.camLive ? Object.values(hs.hands).filter((h) => h.visible && h.pts.length === 21) : [];
-  if (!visible.length && !handsDrawn) return;
-  hctx.clearRect(0, 0, innerWidth, innerHeight);
-  handsDrawn = visible.length > 0;
+// Hand skeletons drawn over the camera box (mirrored, object-fit: cover), once per tracking result.
+function drawPip(visible) {
+  const w = pipCanvas.clientWidth, h = pipCanvas.clientHeight;
+  if (!w) return;
+  if (pipCanvas.width !== w * 2) { pipCanvas.width = w * 2; pipCanvas.height = h * 2; }
+  pipCtx.setTransform(2, 0, 0, 2, 0, 0);
+  pipCtx.clearRect(0, 0, w, h);
+  const s = Math.max(w / videoAspect, h);
+  const ox = (w - videoAspect * s) / 2, oy = (h - s) / 2;
   for (const hand of visible) {
     const col = hand.gesture === 'Pinch' ? '#ff9a3c' : hand.gesture === 'Fist' ? '#ff5a5f' : '#46e0a2';
-    const P = hand.pts.map(coverMap);
-    hctx.globalAlpha = 0.8;
-    hctx.strokeStyle = col;
-    hctx.lineWidth = 2.2;
-    hctx.lineCap = 'round';
-    hctx.beginPath();
-    for (const [a, b] of HAND_CONN) { hctx.moveTo(P[a].x, P[a].y); hctx.lineTo(P[b].x, P[b].y); }
-    hctx.stroke();
-    hctx.lineWidth = 1.5;
-    hctx.fillStyle = '#0b0f1c';
-    for (let i = 0; i < 21; i++) {
-      if (i % 4 === 0 && i) continue;
-      hctx.beginPath(); hctx.arc(P[i].x, P[i].y, 3, 0, Math.PI * 2); hctx.fill(); hctx.stroke();
+    pipCtx.strokeStyle = col;
+    pipCtx.lineWidth = 1.8;
+    pipCtx.lineCap = 'round';
+    pipCtx.beginPath();
+    for (const [a, b] of HAND_CONN) {
+      pipCtx.moveTo(hand.pts[a].x * s + ox, hand.pts[a].y * s + oy);
+      pipCtx.lineTo(hand.pts[b].x * s + ox, hand.pts[b].y * s + oy);
     }
-    hctx.globalAlpha = 1;
-    hctx.shadowColor = col;
-    hctx.shadowBlur = 12;
-    hctx.fillStyle = '#ffffff';
-    for (const i of [4, 8, 12, 16, 20]) { hctx.beginPath(); hctx.arc(P[i].x, P[i].y, 4.5, 0, Math.PI * 2); hctx.fill(); }
-    hctx.shadowBlur = 0;
+    pipCtx.stroke();
+    pipCtx.fillStyle = '#ffffff';
+    for (const i of [4, 8, 12, 16, 20]) { pipCtx.beginPath(); pipCtx.arc(hand.pts[i].x * s + ox, hand.pts[i].y * s + oy, 2.6, 0, Math.PI * 2); pipCtx.fill(); }
   }
 }
 
@@ -2698,27 +2755,15 @@ function updateHandStatus(visible, now = performance.now()) {
   $('handsGesture').textContent = g;
   $('pipGesture').textContent = g || 'Processed on this device';
   $('pipFps').textContent = `${hs.fps} fps`;
-  $('handsFps').textContent = `${hs.fps} fps · ${hs.tracker?.mode === 'worker' ? 'worker' : 'main thread'}`;
+  $('handsFps').textContent = `${hs.fps} fps · ${hs.lag} ms · ${hs.tracker?.delegate || 'main thread'}`;
   $('statusDot').dataset.tone = h ? 'live' : 'wait';
   cursorEl.hidden = !h;
   if (h) cursorEl.dataset.g = h.gesture;
+  drawPip(visible);
 }
 
 // The claude.ai copy sets __labHosted: that viewer never grants camera access.
 const isHosted = () => !!(window.__labHosted || window.claude);
-
-function attachVideo() {
-  if (!camTex) {
-    camTex = new THREE.VideoTexture(handVideo);
-    camTex.colorSpace = THREE.SRGBColorSpace;
-  }
-  const u = camBg.material.uniforms;
-  u.tVideo.value = camTex;
-  u.uHasVideo.value = 1;
-  u.uVideo.value = handVideo.videoWidth / handVideo.videoHeight || 4 / 3;
-  videoAspect = u.uVideo.value;
-  hs.camLive = true;
-}
 
 async function enableHands({ auto = false } = {}) {
   const err = $('consentError');
@@ -2748,7 +2793,7 @@ async function enableHands({ auto = false } = {}) {
   $('statusDot').dataset.tone = 'wait';
   measureNotch();
   handVideo.addEventListener('loadeddata', () => {
-    attachVideo();
+    videoAspect = handVideo.videoWidth / handVideo.videoHeight || 4 / 3;
     $('pipText').textContent = 'Loading hand model…';
     $('handsStatus').textContent = 'Loading hand model…';
   }, { once: true });
@@ -2781,7 +2826,6 @@ function disableHands() {
   hs.tracker?.stop();
   hs.tracker = null;
   hs.on = false;
-  hs.camLive = false;
   hs.calib = null;
   hs.hint = '';
   setHandHover(null);
@@ -2812,7 +2856,7 @@ $('sens').addEventListener('input', (e) => { hs.sens = Number(e.target.value); }
 
 function updateCursor(dt) {
   if (cursorEl.hidden) return;
-  const k = damp(18, dt);
+  const k = damp(38, dt);
   hs.cursor.sx += (hs.cursor.x - hs.cursor.sx) * k;
   hs.cursor.sy += (hs.cursor.y - hs.cursor.sy) * k;
   cursorEl.style.transform = `translate(${hs.cursor.sx.toFixed(1)}px, ${hs.cursor.sy.toFixed(1)}px)`;
@@ -2882,10 +2926,13 @@ function updateGroupLabel(dt) {
 
 let last = performance.now();
 let firstFrame = true;
+let bondsDirty = 10;
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const frameMs = now - last;
+  const dt = Math.min(0.05, frameMs / 1000);
   last = now;
+  if (!firstFrame) trackPerf(frameMs, now);
   const time = now / 1000;
 
   if (state.mode === 'transfer') {
@@ -2907,8 +2954,16 @@ function frame(now) {
 
   updatePoses(dt);
   computeTargets(time);
-  applyVisuals(dt);
-  updateBonds();
+  const visualsMoving = applyVisuals(dt);
+  // Bond geometry lives in the molecule's own frame, so rotating or zooming never changes it. Rebuild it only
+  // while atoms move (the reaction, style or hydrogen changes, aspirin gliding back after the reaction).
+  const tl = state.tl;
+  const posesMoving = aspirinG.position.lengthSq() > 1e-8 || 1 - Math.abs(aspirinG.quaternion.w) > 1e-7
+    || tl.aCur > 1e-4 || tl.hgCur > 1e-4 || tl.h1Cur > 1e-4;
+  if (state.mode === 'transfer' || visualsMoving || posesMoving || bondsDirty > 0) {
+    updateBonds();
+    bondsDirty = Math.max(0, bondsDirty - 1);
+  }
 
   // Rotation: inertia, auto-rotate, then glide toward the target orientation.
   if (!ctrl.dragging) {
@@ -2920,7 +2975,7 @@ function frame(now) {
     // Auto-rotation pauses while a hand is in view, so it never fights your hand.
     if (state.autoRotate && state.mode !== 'transfer' && !(hs.on && hs.primary)) rotateBy(0.22 * dt, 0);
   }
-  ctrl.q.slerp(ctrl.qT, damp(8, dt));
+  ctrl.q.slerp(ctrl.qT, damp(14, dt));
   root.quaternion.copy(ctrl.q);
 
   // Camera.
@@ -2940,18 +2995,10 @@ function frame(now) {
   camera.updateMatrixWorld();
 
   // Enzyme fade.
-  // Over the webcam backdrop the protein turns more see-through, so you stay visible behind it.
-  channel.material.uniforms.uOpacity.value = state.enzymeVis * (1 - 0.4 * state.bgMix);
-  for (const m of enzymeMats) m.opacity = m.userData.baseOpacity * state.enzymeVis * (1 - 0.55 * state.bgMix);
+  channel.material.uniforms.uOpacity.value = state.enzymeVis;
+  for (const m of enzymeMats) m.opacity = m.userData.baseOpacity * state.enzymeVis;
   enzymeG.visible = state.enzymeVis > 0.01;
-  // Webcam backdrop fade.
-  state.bgMix += ((hs.camLive ? 1 : 0) - state.bgMix) * damp(2.5, dt);
-  camBg.visible = state.bgMix > 0.002;
-  camBg.material.uniforms.uMix.value = state.bgMix;
-  dome.visible = state.bgMix < 0.995;
-  particles.material.opacity = 0.5 * (1 - 0.6 * state.bgMix);
-  plinth.material.opacity = 0.22 * (1 - state.enzymeVis) * (1 - state.bgMix);
-  drawHands();
+  plinth.material.opacity = 0.22 * (1 - state.enzymeVis);
 
   updateEffects(time);
   updateTags(time);
@@ -2959,11 +3006,7 @@ function frame(now) {
   updateGroupLabel(dt);
   updateCursor(dt);
 
-  if (!reduceMotion) {
-    particles.rotation.y += dt * 0.012;
-    particles.rotation.x = Math.sin(time * 0.05) * 0.05;
-    for (const hx of hexes.children) { hx.rotation.z += hx.userData.spin * dt; hx.rotation.x += hx.userData.spin * 0.4 * dt; }
-  }
+  animateBackground(reduceMotion ? 12 : time);
   if (state.mode !== 'transfer' && lastStageShown !== -1) { lastStageShown = -1; $('notchLabel').textContent = 'ASPIRIN LAB'; }
   if (!hs.on && !hs.starting) {
     const tone = state.mode === 'transfer' && state.playing ? 'play' : '';
