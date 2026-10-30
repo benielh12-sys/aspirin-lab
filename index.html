@@ -384,6 +384,20 @@ button { font: inherit; color: inherit; }
 #handCursor[data-g="Pinch"] .ring { inset: 13px; background: color-mix(in srgb, var(--orange) 30%, transparent); }
 #handCursor[data-g="Fist"] { --c: var(--red); }
 #handCursor[data-g="Open palm"] .ring { inset: 2px; }
+#handCursor { z-index: 70; }
+#handCursor.armed .ring { inset: 3px; border-style: dashed; box-shadow: 0 0 24px -2px var(--c); }
+#handCursor.armed .dot { width: 8px; height: 8px; margin: -4px; }
+#handCursor .ripple { position: absolute; inset: 8px; border-radius: 50%; border: 2px solid var(--c); opacity: 0; }
+#handCursor.clicked .ripple { animation: cursor-ripple 0.45s var(--ease-out); }
+@keyframes cursor-ripple { from { transform: scale(0.6); opacity: 1; } to { transform: scale(2.4); opacity: 0; } }
+#handCursor .clabel {
+  position: absolute; left: 44px; top: 12px;
+  padding: 3px 8px; border-radius: 7px; white-space: nowrap;
+  background: rgba(4, 6, 12, 0.88); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  font-family: var(--mono); font-size: 11px; color: var(--fg);
+  opacity: 0; transition: opacity 0.15s ease;
+}
+#handCursor .clabel.on { opacity: 1; }
 #handCursor svg { position: absolute; inset: -6px; width: 56px; height: 56px; transform: rotate(-90deg); }
 #handCursor svg circle { fill: none; stroke: var(--c); stroke-width: 2.5; stroke-dasharray: 150.8; stroke-dashoffset: calc(150.8 * (1 - var(--p))); stroke-linecap: round; opacity: calc(var(--p) * 4); }
 
@@ -414,6 +428,73 @@ button { font: inherit; color: inherit; }
 .calib-ring .track { stroke: rgba(255, 255, 255, 0.1); }
 .calib-ring .bar { stroke: var(--live); stroke-dasharray: 182.2; stroke-dashoffset: calc(182.2 * (1 - var(--p, 0))); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
 
+/* ---------- Hand guide (tutorial) ---------- */
+.side-guide {
+  position: fixed;
+  left: max(20px, env(safe-area-inset-left, 0px)); top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 10px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--glass);
+  color: var(--muted); font-size: 11px; font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.side-guide:hover { color: var(--fg); border-color: var(--line-hi); }
+.side-guide svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.tut-card { width: min(540px, 100%); padding: 22px 24px 18px; display: grid; gap: 14px; }
+.tut-top { display: flex; align-items: center; justify-content: space-between; }
+.tut-step { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--live); }
+.tut-card h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.tut-card p { margin: 0; color: #c3c9dc; line-height: 1.6; text-wrap: pretty; }
+.tut-card p b { color: var(--fg); font-weight: 600; }
+.tut-demo {
+  height: 176px; border-radius: 14px; overflow: hidden;
+  display: grid; place-items: center;
+  background: radial-gradient(260px 140px at 50% 50%, rgba(92, 120, 255, 0.14), transparent 70%), rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+}
+.tut-demo svg { width: 330px; max-width: 100%; height: 172px; overflow: visible; }
+.tut-nav { display: flex; align-items: center; gap: 10px; }
+.tut-nav .tool { height: 46px; padding: 0 22px; font-size: 13px; }
+.tut-dots { flex: 1; display: flex; justify-content: center; gap: 6px; }
+.tut-dots i { width: 6px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); transition: width 0.25s var(--ease-out), background 0.25s ease; }
+.tut-dots i.on { width: 20px; background: var(--live); }
+.tut-foot { font-size: 12px; color: var(--dim) !important; }
+
+/* Demo drawings: strokes and fills come from these classes; each step loops its own short animation. */
+.tut-demo .ln { fill: none; stroke: #cfd5ea; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tut-demo .live { fill: var(--live); }
+.tut-demo .ring { fill: none; stroke: var(--live); stroke-width: 2.5; }
+.tut-demo .c { fill: #4a4f5c; }
+.tut-demo .o { fill: #d92e36; }
+.tut-demo .bond { stroke: #7d8494; stroke-width: 5; stroke-linecap: round; }
+.tut-demo .glow { fill: none; stroke: #8fe8ff; stroke-width: 4; opacity: 0; }
+.tut-demo .label { fill: #8d95ae; font: 500 11px var(--mono); letter-spacing: 0.08em; }
+.tut-demo .move, .tut-demo .spin { transform-box: fill-box; transform-origin: center; }
+.tut-demo .pulse { animation: tut-pulse 1.6s ease-in-out infinite; }
+.tut-demo .aim { animation: tut-aim 3.2s var(--ease-in-out) infinite; }
+.tut-demo .aim-glow { animation: tut-aim-glow 3.2s ease infinite; }
+.tut-demo .thumb { animation: tut-thumb 2.4s ease-in-out infinite; }
+.tut-demo .index { animation: tut-index 2.4s ease-in-out infinite; }
+.tut-demo .click-ripple { animation: tut-ripple 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.tut-demo .click-glow { animation: tut-click-glow 2.4s ease infinite; }
+.tut-demo .spin { animation: tut-spin 6s linear infinite; }
+.tut-demo .sway { animation: tut-sway 3s var(--ease-in-out) infinite; }
+.tut-demo .swipe { animation: tut-swipe 2.2s var(--ease-in-out) infinite; }
+@keyframes tut-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes tut-aim { 0%, 12% { transform: translateX(-70px); } 40%, 66% { transform: translateX(0); } 92%, 100% { transform: translateX(70px); } }
+@keyframes tut-aim-glow { 0%, 36% { opacity: 0; } 44%, 62% { opacity: 1; } 70%, 100% { opacity: 0; } }
+@keyframes tut-thumb { 0%, 6%, 28%, 52%, 100% { transform: translate(0, 0); } 14%, 20%, 38%, 44% { transform: translate(11px, -9px); } }
+@keyframes tut-index { 0%, 6%, 28%, 52%, 100% { transform: translate(0, 0); } 14%, 20%, 38%, 44% { transform: translate(-11px, 9px); } }
+@keyframes tut-ripple { 0%, 43% { transform: scale(0.3); opacity: 0; } 46% { opacity: 1; } 72%, 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes tut-click-glow { 0%, 45% { opacity: 0; } 50%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes tut-spin { to { transform: rotate(360deg); } }
+@keyframes tut-sway { 0%, 100% { transform: translateX(-34px); } 50% { transform: translateX(34px); } }
+@keyframes tut-swipe { 0% { transform: translateX(70px); opacity: 0; } 15% { opacity: 1; } 60% { transform: translateX(-70px); opacity: 1; } 75%, 100% { transform: translateX(-70px); opacity: 0; } }
+
 /* ---------- Loader ---------- */
 #loader {
   position: fixed; inset: 0; z-index: 60;
@@ -432,6 +513,10 @@ button { font: inherit; color: inherit; }
 #loader.error p { color: #ffc2c2; max-width: 380px; line-height: 1.55; font-family: var(--display); font-size: 14px; }
 
 @media (max-width: 720px) {
+  .side-guide { top: calc(max(12px, env(safe-area-inset-top, 0px)) + 96px); left: 12px; transform: none; flex-direction: row; padding: 8px 12px; }
+  .side-guide svg { width: 18px; height: 18px; }
+  .tut-card { padding: 18px; }
+  .tut-demo { height: 150px; }
   .title { top: calc(max(12px, env(safe-area-inset-top, 0px)) + 40px); left: 16px; }
   .title h1 { font-size: 11px; }
   .title p { font-size: 11px; }
@@ -452,6 +537,8 @@ button { font: inherit; color: inherit; }
   .notch, .notch-panel, .fade-card, #toast { transition-duration: 0.01s !important; transition-delay: 0s !important; }
   .status-dot { animation: none !important; }
   .loader-bar i { animation-duration: 3s; }
+  .tut-demo * { animation: none !important; }
+  .tut-demo .aim-glow, .tut-demo .click-glow { opacity: 1; }
 }
 </style>
 <!-- libs:start -->
@@ -595,7 +682,30 @@ button { font: inherit; color: inherit; }
   <div class="pip-msg" id="pipGesture">Processed on this device</div>
 </aside>
 
-<div id="handCursor" hidden><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24"/></svg><div class="ring"></div><div class="dot"></div></div>
+<div id="handCursor" hidden><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24"/></svg><div class="ring"></div><div class="ripple"></div><div class="dot"></div><span class="clabel" id="cursorLabel"></span></div>
+
+<button class="side-guide" id="btnGuide" type="button" hidden>
+  <svg viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.3-5.5-3.5L4 13.8a1.4 1.4 0 0 1 2.3-1.6L8 14"/></svg>
+  <span>Hand guide</span>
+</button>
+
+<div class="overlay tutorial" id="tutorial" role="dialog" aria-modal="true" aria-labelledby="tutTitle" hidden>
+  <div class="card tut-card">
+    <div class="tut-top">
+      <span class="tut-step" id="tutStep">Step 1 of 5</span>
+      <button class="icon-btn" type="button" id="tutClose" aria-label="Close the hand guide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="tut-demo" id="tutDemo" aria-hidden="true"></div>
+    <h2 id="tutTitle"></h2>
+    <p id="tutText"></p>
+    <div class="tut-nav">
+      <button class="tool" type="button" id="tutBack">Back</button>
+      <div class="tut-dots" id="tutDots"></div>
+      <button class="tool primary" type="button" id="tutNext">Next</button>
+    </div>
+    <p class="tut-foot">Video stays on this device. Mouse, touch and keyboard always work too.</p>
+  </div>
+</div>
 
 <div class="overlay" id="consent" role="dialog" aria-modal="true" aria-labelledby="consentTitle" hidden>
   <div class="card dialog">
@@ -605,7 +715,7 @@ button { font: inherit; color: inherit; }
     <dl class="gesture-list">
       <dt>Open hand</dt><dd>Move to rotate · hold still to pause</dd>
       <dt>Point</dt><dd>Highlight an atom</dd>
-      <dt>Pinch</dt><dd>Select · pinch and move to rotate</dd>
+      <dt>Double-pinch</dt><dd>Click what you're pointing at · pinch and move to rotate</dd>
       <dt>Two pinches</dt><dd>Move apart or together to zoom</dd>
       <dt>Swipe</dt><dd>Change mode or reaction stage</dd>
       <dt>Fist (hold)</dt><dd>Reset the view</dd>
@@ -778,14 +888,22 @@ try {
   throw err;
 }
 // Quality levels, from best to lightest. A governor in the frame loop steps through them to hold a smooth frame rate.
+// At 2x the screen is already supersampled, so the sharpest level skips MSAA (it costs most at full Retina size).
 const QUALITY = [
+  { pr: 2, msaa: 0, bloom: true },
   { pr: 1.5, msaa: 4, bloom: true },
   { pr: 1.25, msaa: 2, bloom: true },
-  { pr: 1, msaa: 2, bloom: true },
-  { pr: 1, msaa: 0, bloom: false },
-  { pr: 0.75, msaa: 0, bloom: false },
+  { pr: 1, msaa: 2, bloom: false },
+  { pr: 0.85, msaa: 0, bloom: false },
 ];
-const perf = { level: coarse ? 2 : 0, sum: 0, n: 0, windowStart: performance.now(), lastChange: performance.now() + 2500, good: 0 };
+// ?quality=N pins a level (for testing). Otherwise start sharp and let the governor adapt; it waits a few
+// seconds first because start-up (compiling, loading the hand model) is briefly slow on every machine.
+const pinnedQuality = new URLSearchParams(location.search).get('quality');
+const perf = {
+  level: pinnedQuality !== null ? clamp(Number(pinnedQuality) || 0, 0, 4) : coarse ? 2 : 0,
+  pinned: pinnedQuality !== null,
+  sum: 0, n: 0, windowStart: performance.now(), lastChange: performance.now() + 5000, good: 0, upAfter: 6,
+};
 const pixelRatio = () => Math.min(window.devicePixelRatio || 1, QUALITY[perf.level].pr);
 renderer.setPixelRatio(pixelRatio());
 renderer.setSize(innerWidth, innerHeight);
@@ -802,7 +920,8 @@ scene.environmentIntensity = 0.45;
 const composerTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY[perf.level].msaa });
 const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.45, 0.92);
+// Light bloom with a high threshold: highlights glow, but atom edges stay sharp instead of hazy.
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.35, 1.0);
 bloom.enabled = QUALITY[perf.level].bloom;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -829,18 +948,21 @@ function applyQuality() {
   document.documentElement.dataset.quality = String(perf.level);
 }
 
-// Once a second: if frames average slower than ~48 fps, drop a level; after several smooth seconds, try one level up.
+// Once a second: if frames average slower than ~48 fps, drop a level. After several seconds running at the
+// display's full rate, try one level sharper; each time that fails, wait twice as long before trying again.
 function trackPerf(frameMs, now) {
   perf.sum += frameMs;
   perf.n++;
   if (now - perf.windowStart < 1000) return;
   const avg = perf.sum / perf.n;
   perf.sum = 0; perf.n = 0; perf.windowStart = now;
-  if (document.hidden || now < perf.lastChange) return;
+  if (perf.pinned || document.hidden || now < perf.lastChange) return;
   if (avg > 21 && perf.level < QUALITY.length - 1) {
+    if (perf.triedUp) perf.upAfter = Math.min(perf.upAfter * 2, 96);
+    perf.triedUp = false;
     perf.level++; perf.lastChange = now + 1500; perf.good = 0; applyQuality();
-  } else if (avg < 14 && perf.level > 0) {
-    if (++perf.good >= 6) { perf.level--; perf.lastChange = now + 6000; perf.good = 0; applyQuality(); }
+  } else if (avg < 17.6 && perf.level > 0) {
+    if (++perf.good >= perf.upAfter) { perf.level--; perf.triedUp = true; perf.lastChange = now + 3000; perf.good = 0; applyQuality(); }
   } else perf.good = 0;
 }
 
@@ -860,8 +982,19 @@ scene.add(key, rimBlue, rimViolet, new THREE.HemisphereLight(0x8090ff, 0x0a0812,
 
 // Background: a slowly flowing nebula. Domain-warped noise drifts with time, so the scene loops forever without
 // repeating visibly. Values stay dim (well under the bloom threshold) so the molecule keeps the focus.
+// The clouds are soft, so they're computed per vertex on a dense sphere and interpolated across pixels: the
+// same look as per-pixel noise at a tiny fraction of the cost, which matters at full Retina resolution.
+const NOISE_GLSL = `
+  float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float noise(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+  }
+  float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }`;
 const dome = new THREE.Mesh(
-  new THREE.SphereGeometry(400, 48, 24),
+  new THREE.SphereGeometry(400, 192, 96),
   new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -873,20 +1006,11 @@ const dome = new THREE.Mesh(
       cViolet: { value: new THREE.Vector3(0.2, 0.06, 0.36) },
       cTeal: { value: new THREE.Vector3(0.02, 0.22, 0.24) },
     },
-    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `precision highp float;
-      varying vec3 vDir;
-      uniform float uTime; uniform vec3 cTop; uniform vec3 cBottom; uniform vec3 cBlue; uniform vec3 cViolet; uniform vec3 cTeal;
-      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-      float noise(vec3 x) {
-        vec3 i = floor(x), f = fract(x);
-        f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
-                   mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-      }
-      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+    vertexShader: `uniform float uTime; uniform vec3 cTop; uniform vec3 cBottom; uniform vec3 cBlue; uniform vec3 cViolet; uniform vec3 cTeal;
+      varying vec3 vDir; varying vec3 vCol;
+      ${NOISE_GLSL}
       void main(){
-        vec3 d = normalize(vDir);
+        vec3 d = normalize(position);
         float t = uTime * 0.03;
         float n1 = fbm(d * 2.2 + vec3(t, -t * 0.6, t * 0.4));
         float n2 = fbm(d * 3.6 + vec3(-t * 0.8, t * 0.5, 3.0) + n1 * 1.6);
@@ -894,9 +1018,18 @@ const dome = new THREE.Mesh(
         col += cBlue * smoothstep(0.42, 0.85, n2) * 0.22;
         col += cViolet * smoothstep(0.5, 0.88, n1) * 0.17;
         col += cTeal * pow(smoothstep(0.55, 0.95, n1 * n2 * 1.7), 2.0) * 0.08;
-        vec3 cell = floor(d * 380.0);
-        float star = step(0.9986, hash(cell));
-        col += vec3(0.55, 0.65, 1.0) * star * (0.25 + 0.2 * sin(uTime * 1.7 + hash(cell + 3.0) * 40.0));
+        vCol = col;
+        vDir = d;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `precision highp float;
+      varying vec3 vDir; varying vec3 vCol; uniform float uTime;
+      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      void main(){
+        vec3 p = normalize(vDir) * 380.0;
+        vec3 cell = floor(p);
+        float star = step(0.9986, hash(cell)) * smoothstep(0.42, 0.05, length(fract(p) - 0.5));
+        vec3 col = vCol + vec3(0.55, 0.65, 1.0) * star * (0.25 + 0.2 * sin(uTime * 1.7 + hash(cell + 3.0) * 40.0));
         gl_FragColor = vec4(col, 1.0);
       }`,
   })
@@ -1027,11 +1160,11 @@ const aaG = new THREE.Group();      // arachidonic acid
 root.add(aspirinG, acetylG, enzymeG, aaG);
 const ownGroups = [aspirinG, acetylG, aaG];
 
-const sphereGeo = new THREE.SphereGeometry(1, 40, 28);
-const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false);
+const sphereGeo = new THREE.SphereGeometry(1, 64, 44);
+const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 28, 1, false);
 const pickMat = new THREE.MeshBasicMaterial({ visible: false });
 // Standard (not physical/clearcoat) shading: nearly the same look at a fraction of the GPU cost per pixel.
-const makeMat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.27, metalness: 0, envMapIntensity: 1.15, ...extra });
+const makeMat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.22, metalness: 0, envMapIntensity: 1.2, ...extra });
 
 const atoms = [];
 const bonds = [];
@@ -2260,6 +2393,12 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   const k = e.key;
   if (!$('consent').hidden) { if (k === 'Escape') closeConsent(); return; }
+  if (tut.open) {
+    if (k === 'Escape') closeTutorial();
+    else if (k === 'ArrowRight') stepTutorial(1);
+    else if (k === 'ArrowLeft') stepTutorial(-1);
+    return;
+  }
   const onButton = tag === 'BUTTON';
   switch (k) {
     case '1': setMode('explore'); break;
@@ -2436,7 +2575,7 @@ class OneEuro {
 const HAND_CONN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
 const handVideo = $('handVideo'), pipCanvas = $('pipCanvas'), pipCtx = pipCanvas.getContext('2d');
 const cursorEl = $('handCursor');
-const HAND_GUIDE = 'Open hand: rotate · Point, then pinch: select or press · Swipe: next · Hold palm still: pause';
+const HAND_GUIDE = 'Point to aim · Double-pinch to click · Open hand: rotate · Swipe: next · Hold palm still: pause';
 // By default the middle of the camera frame maps to the whole screen, so small, comfortable hand movements
 // reach every corner. Calibrate replaces this with a box measured around your own hand.
 const DEFAULT_CALIB = { cx: 0.5, cy: 0.45, hh: 0.3 };
@@ -2447,8 +2586,8 @@ const hs = {
   calibrating: null,
   hint: '', everSeen: false, guideUntil: 0,
   cursor: { x: innerWidth / 2, y: innerHeight / 2, sx: innerWidth / 2, sy: innerHeight / 2 },
-  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0, lagSum: 0, lagN: 0, lag: 0,
-  rotHist: [], lastActionAt: 0,
+  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0, lagSum: 0, lagN: 0, lag: 0, tookSum: 0, took: 0,
+  rotHist: [], lastActionAt: 0, armed: null,
 };
 let videoAspect = 4 / 3;
 
@@ -2538,8 +2677,8 @@ function onHandResult(res, now) {
 
   hs.results++;
   // Latency: from the moment the camera frame was grabbed to the moment its result arrived here.
-  if (res.ts) { hs.lagSum += now - res.ts; hs.lagN++; }
-  if (hs.lagN >= 15) { hs.lag = Math.round(hs.lagSum / hs.lagN); hs.lagSum = 0; hs.lagN = 0; }
+  if (res.ts) { hs.lagSum += now - res.ts; hs.tookSum += res.took || 0; hs.lagN++; }
+  if (hs.lagN >= 15) { hs.lag = Math.round(hs.lagSum / hs.lagN); hs.took = Math.round(hs.tookSum / hs.lagN); hs.lagSum = 0; hs.tookSum = 0; hs.lagN = 0; }
   if (now - hs.fpsStart > 600) { hs.fps = Math.round((hs.results * 1000) / (now - hs.fpsStart)); hs.results = 0; hs.fpsStart = now; }
 
   const visible = Object.values(hs.hands).filter((h) => h.visible);
@@ -2564,7 +2703,7 @@ function nav(dir) {
 function handActions(visible, now) {
   const both = visible.length === 2 && visible.every((h) => h.gesture === 'Pinch');
   // Two pinching hands: spread apart to zoom in, bring together to zoom out.
-  if (both) {
+  if (both && !tut.open) {
     const [a, b] = visible;
     const d = hDist(mid(a.pts[4], a.pts[8]), mid(b.pts[4], b.pts[8]));
     if (!hs.zoom) hs.zoom = { d, z: state.zoomT };
@@ -2584,30 +2723,39 @@ function handActions(visible, now) {
   if (h.gesture !== 'Pinch') {
     const btn = buttonAt(c.x, c.y);
     setHandHover(btn);
-    const hit = !btn && (h.gesture === 'Point' || h.gesture === 'Hand') ? pickAt(c.x, c.y) : null;
+    const hit = !btn && !tut.open && (h.gesture === 'Point' || h.gesture === 'Hand') ? pickAt(c.x, c.y) : null;
     state.hover = hit;
+    setCursorLabel(hit);
     hs.hoverHist.push({ t: now, hit, btn });
   }
   while (hs.hoverHist.length && now - hs.hoverHist[0].t > 600) hs.hoverHist.shift();
 
-  // Pinch: a quick tap presses the button or selects the atom you were pointing at; pinch and move rotates.
-  // The target comes from just before the fingers closed, because closing them moves the fingertip.
+  // Pinch: two quick pinches click whatever you were pointing at (an atom, a bond or a button), like a mouse
+  // double-click. The target is locked when the first pinch starts, because closing the fingers moves the
+  // fingertip. A pinch held and moved rotates instead.
   if (h.gesture === 'Pinch' && h.prevGesture !== 'Pinch') {
     h.pinchStart = now;
     h.pinchFrom = mid(P[4], P[8]);
     h.pinchLast = h.pinchFrom;
     h.pinchDragged = false;
-    const before = hs.hoverHist.filter((e) => now - e.t > 80 && now - e.t < 450 && (e.hit || e.btn)).pop();
-    h.pinchTarget = before ? (before.btn ? { dom: before.btn } : before.hit) : null;
+    if (hs.armed) h.pinchTarget = hs.armed.target;
+    else {
+      const before = hs.hoverHist.filter((e) => now - e.t > 80 && now - e.t < 450 && (e.hit || e.btn)).pop();
+      h.pinchTarget = before ? (before.btn ? { dom: before.btn } : before.hit) : null;
+    }
   }
   if (h.gesture === 'Pinch') {
     const m = mid(P[4], P[8]);
-    if (!h.pinchDragged && hDist(m, h.pinchFrom) > 0.035) h.pinchDragged = true;
-    if (h.pinchDragged) rotateBy((m.x - h.pinchLast.x) * 4.4 * hs.sens, (m.y - h.pinchLast.y) * 4.4 * hs.sens);
+    if (!h.pinchDragged && hDist(m, h.pinchFrom) > 0.035) { h.pinchDragged = true; disarm(); }
+    if (h.pinchDragged && !tut.open) rotateBy((m.x - h.pinchLast.x) * 4.4 * hs.sens, (m.y - h.pinchLast.y) * 4.4 * hs.sens);
     h.pinchLast = m;
   } else if (h.prevGesture === 'Pinch') {
     endPinch(h, now, false);
   }
+  if (hs.armed && now - hs.armed.t > DOUBLE_PINCH_MS) disarm();
+
+  // While the guide is open, hands only aim and click; they don't move the molecule.
+  if (tut.open) return;
 
   // Open palm: move to rotate. Fast flicks are swipes, so they don't rotate.
   if (h.prevPalm && h.gesture === 'Open palm' && now - h.stableSince > 150) {
@@ -2654,18 +2802,53 @@ function handActions(visible, now) {
   } else { h.holdKind = null; h.holdP = 0; }
 }
 
+const DOUBLE_PINCH_MS = 800;
+
 function endPinch(h, now, lost) {
-  if (!lost && !h.pinchDragged && now - h.pinchStart < 700) {
-    if (h.pinchTarget?.dom) {
-      const el = h.pinchTarget.dom;
-      el.click();
-      toast(`Pressed ${(el.getAttribute('aria-label') || el.textContent).trim().replace(/\s+/g, ' ')}`);
-    } else if (h.pinchTarget) {
-      onPick(h.pinchTarget);
-      toast(h.pinchTarget.type === 'atom' ? `Selected ${h.pinchTarget.rec.label}` : 'Selected bond');
-    } else if (state.mode === 'explore' && state.selected) { clearSelection(); }
+  if (!lost && !h.pinchDragged && now - h.pinchStart < 650) {
+    if (hs.armed && now - hs.armed.t < DOUBLE_PINCH_MS) {
+      handClick(hs.armed.target);
+      disarm();
+    } else {
+      // First pinch of a double-pinch: remember the target and wait for the second.
+      hs.armed = { target: h.pinchTarget, t: now };
+      cursorEl.classList.add('armed');
+    }
   }
   h.pinchDragged = false;
+}
+
+function disarm() {
+  hs.armed = null;
+  cursorEl.classList.remove('armed');
+}
+
+function handClick(target) {
+  cursorEl.classList.remove('clicked');
+  void cursorEl.offsetWidth;
+  cursorEl.classList.add('clicked');
+  if (target?.dom) {
+    const el = target.dom;
+    el.click();
+    toast(`Clicked ${(el.getAttribute('aria-label') || el.textContent).trim().replace(/\s+/g, ' ')}`);
+  } else if (target) {
+    onPick(target);
+    toast(target.type === 'atom' ? `Selected ${ELEMENTS[target.rec.el].name} ${target.rec.label}` : 'Selected bond');
+  } else if (state.mode === 'explore' && state.selected) {
+    clearSelection();
+    toast('Selection cleared', '#8d95ae');
+  }
+}
+
+let cursorLabelText = '';
+function setCursorLabel(hit) {
+  const text = hit?.type === 'atom' ? `${ELEMENTS[hit.rec.el].name} · ${hit.rec.label}`
+    : hit?.type === 'bond' ? `${hit.rec.a.label}–${hit.rec.b.label} bond` : '';
+  if (text === cursorLabelText) return;
+  cursorLabelText = text;
+  const el = $('cursorLabel');
+  if (text) el.textContent = text;
+  el.classList.toggle('on', !!text);
 }
 
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
@@ -2755,7 +2938,7 @@ function updateHandStatus(visible, now = performance.now()) {
   $('handsGesture').textContent = g;
   $('pipGesture').textContent = g || 'Processed on this device';
   $('pipFps').textContent = `${hs.fps} fps`;
-  $('handsFps').textContent = `${hs.fps} fps · ${hs.lag} ms · ${hs.tracker?.delegate || 'main thread'}`;
+  $('handsFps').textContent = `${hs.fps} fps · ${hs.lag} ms delay · model ${hs.took} ms · ${hs.tracker?.delegate || 'main thread'}`;
   $('statusDot').dataset.tone = h ? 'live' : 'wait';
   cursorEl.hidden = !h;
   if (h) cursorEl.dataset.g = h.gesture;
@@ -2854,6 +3037,109 @@ $('btnCamOff').addEventListener('click', () => { disableHands(); toast('Camera o
 $('btnCalib').addEventListener('click', startCalibration);
 $('sens').addEventListener('input', (e) => { hs.sens = Number(e.target.value); });
 
+/* ============================================================
+   Hand guide: a short tutorial shown on the first visit, reopened from the side button
+   ============================================================ */
+
+const HAND_PATH = 'M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.3-5.5-3.5L4 13.8a1.4 1.4 0 0 1 2.3-1.6L8 14';
+const handGlyph = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})"><path class="ln" style="stroke-width:${(2 / s).toFixed(2)}" d="${HAND_PATH}"/></g>`;
+const hexagon = (cx, cy, r) => Array.from({ length: 6 }, (_, k) => {
+  const a = (k / 6) * Math.PI * 2 - Math.PI / 2;
+  return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+});
+const TUTORIAL = [
+  {
+    title: 'Show your hand',
+    text: 'Hold one hand up in front of your webcam. A green skeleton appears on it in the camera box, and a ring cursor follows your <b>index fingertip</b>.',
+    demo: `<rect x="80" y="14" width="120" height="100" rx="12" fill="rgba(0,0,0,0.35)" stroke="#5d6582" stroke-width="1.5"/>
+      ${handGlyph(106, 30, 3)}
+      <g class="pulse"><circle class="live" cx="134.5" cy="45" r="3.5"/><circle class="live" cx="143.5" cy="39" r="3.5"/><circle class="live" cx="152.5" cy="43.5" r="3.5"/><circle class="live" cx="119.8" cy="69" r="3.5"/></g>
+      <text class="label" x="140" y="142" text-anchor="middle">HAND DETECTED</text>`,
+  },
+  {
+    title: 'Point to aim',
+    text: 'Point with your index finger. Whatever the ring is over lights up and is named next to the cursor: an atom, a bond, or a button.',
+    demo: `<line class="bond" x1="70" y1="72" x2="210" y2="72"/>
+      <circle class="c" cx="70" cy="72" r="16"/><circle class="o" cx="140" cy="72" r="15"/><circle class="c" cx="210" cy="72" r="16"/>
+      <circle class="glow aim-glow" cx="140" cy="72" r="23"/>
+      <g class="move aim"><circle class="ring" cx="140" cy="72" r="21"/><circle class="live" cx="140" cy="72" r="3"/></g>
+      <text class="label aim-glow" x="140" y="132" text-anchor="middle">OXYGEN · O3</text>`,
+  },
+  {
+    title: 'Double-pinch to click',
+    text: 'Tap your thumb and index finger together <b>twice, quickly</b>. It works like a mouse click: select an oxygen, or press any button. Raise your hand to the top of the screen to open the controls.',
+    demo: `<circle class="o" cx="196" cy="72" r="16"/>
+      <circle class="glow click-glow" cx="196" cy="72" r="24"/>
+      <circle class="ring click-ripple" cx="196" cy="72" r="20"/>
+      <circle class="ring" cx="196" cy="72" r="21" style="opacity:0.45"/>
+      <g class="move thumb"><circle class="live" cx="92" cy="90" r="9"/></g>
+      <g class="move index"><circle cx="114" cy="72" r="9" fill="#cfd5ea"/></g>
+      <text class="label" x="103" y="132" text-anchor="middle">PINCH, PINCH</text>
+      <text class="label click-glow" x="196" y="132" text-anchor="middle">CLICKED</text>`,
+  },
+  {
+    title: 'Open hand to rotate',
+    text: 'Move an open hand to turn the molecule. Pinch and drag also rotates. Pinch with <b>both hands</b> and pull them apart to zoom in.',
+    demo: `<g class="spin">${hexagon(140, 56, 32).map(([x, y], k, arr) => `<line class="bond" style="stroke-width:4" x1="${x}" y1="${y}" x2="${arr[(k + 1) % 6][0]}" y2="${arr[(k + 1) % 6][1]}"/>`).join('')}
+        ${hexagon(140, 56, 32).map(([x, y]) => `<circle class="c" cx="${x}" cy="${y}" r="8"/>`).join('')}</g>
+      <g class="move sway">${handGlyph(116, 94, 2.2)}</g>`,
+  },
+  {
+    title: 'Swipe to move on',
+    text: 'Swipe an open hand sideways to change mode or reaction stage. <b>Hold your palm still</b> to pause, or <b>hold a fist</b> to reset the view.',
+    demo: `<text class="label" x="56" y="34" text-anchor="middle">EXPLORE</text>
+      <text class="label" x="140" y="34" text-anchor="middle" style="fill:#e9ecf6">GROUPS</text>
+      <text class="label" x="224" y="34" text-anchor="middle">TRANSFER</text>
+      <g class="move swipe">${handGlyph(112, 52, 2.4)}<path class="ln" d="M100 112 H180 M100 112 l10 -7 M100 112 l10 7" style="stroke:#46e0a2"/></g>
+      <text class="label" x="140" y="146" text-anchor="middle">HOLD PALM: PAUSE · HOLD FIST: RESET</text>`,
+  },
+];
+const TUT_KEY = 'aspirinLab.handGuideSeen';
+const tut = { open: false, step: 0 };
+const tutDots = $('tutDots');
+tutDots.innerHTML = TUTORIAL.map(() => '<i></i>').join('');
+
+function renderTutorial() {
+  const s = TUTORIAL[tut.step];
+  $('tutStep').textContent = `Step ${tut.step + 1} of ${TUTORIAL.length}`;
+  $('tutTitle').textContent = s.title;
+  $('tutText').innerHTML = s.text;
+  $('tutDemo').innerHTML = `<svg viewBox="0 0 280 160">${s.demo}</svg>`;
+  [...tutDots.children].forEach((d, i) => d.classList.toggle('on', i === tut.step));
+  $('tutBack').disabled = tut.step === 0;
+  $('tutNext').textContent = tut.step === TUTORIAL.length - 1 ? 'Start' : 'Next';
+}
+function openTutorial() {
+  tut.open = true;
+  tut.step = 0;
+  renderTutorial();
+  $('tutorial').hidden = false;
+  setNotch(false);
+  $('tutNext').focus();
+}
+function closeTutorial() {
+  tut.open = false;
+  $('tutorial').hidden = true;
+  try { localStorage.setItem(TUT_KEY, '1'); } catch { /* storage blocked: the guide simply shows again next visit */ }
+}
+function stepTutorial(dir) {
+  const next = tut.step + dir;
+  if (next >= TUTORIAL.length) { closeTutorial(); return; }
+  tut.step = Math.max(0, next);
+  renderTutorial();
+}
+function maybeShowTutorial() {
+  if (isHosted()) return;
+  let seen = false;
+  try { seen = localStorage.getItem(TUT_KEY) === '1'; } catch { /* treat as not seen */ }
+  if (!seen) openTutorial();
+}
+$('btnGuide').hidden = isHosted();
+$('btnGuide').addEventListener('click', openTutorial);
+$('tutNext').addEventListener('click', () => stepTutorial(1));
+$('tutBack').addEventListener('click', () => stepTutorial(-1));
+$('tutClose').addEventListener('click', closeTutorial);
+
 function updateCursor(dt) {
   if (cursorEl.hidden) return;
   const k = damp(38, dt);
@@ -2909,7 +3195,7 @@ function updateGroupLabel(dt) {
     const len = Math.hypot(dx, dy) || 1;
     tx = ax + (dx / len) * 150 + (dx >= 0 ? 30 : -w - 30);
     ty = ay + (dy / len) * 90 - h / 2;
-    tx = clamp(tx, 20, innerWidth - w - 20);
+    tx = clamp(tx, 112, innerWidth - w - 20); // stay clear of the Hand guide button on the left edge
     ty = clamp(ty, 80, innerHeight - h - 24);
   }
   const k = gl.init ? damp(8, dt) : 1;
@@ -3020,6 +3306,7 @@ function frame(now) {
     window.__labReady = true;
     clearTimeout(window.__labTimer);
     $('loader').classList.add('done');
+    setTimeout(maybeShowTutorial, 700);
   }
 }
 
