@@ -402,6 +402,14 @@ button { font: inherit; color: inherit; }
 
 .tut-cursor { position: absolute; z-index: 2; opacity: 0; }
 .tut-cursor.on { opacity: 1; }
+/* Two-hand grab: a line between the hands while they hold the molecule. */
+#grip { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 70; overflow: visible; opacity: 0; transition: opacity 0.2s ease; }
+#grip.on { opacity: 1; }
+#grip line { stroke: var(--live); stroke-linecap: round; }
+#grip .halo { stroke-width: 10; opacity: 0.16; }
+#grip .core { stroke-width: 1.6; }
+#grip circle { fill: color-mix(in srgb, var(--live) 14%, transparent); stroke: var(--live); stroke-width: 2; }
+#grip .mid { fill: var(--live); stroke: none; }
 
 .overlay {
   position: fixed; inset: 0; z-index: 50;
@@ -714,6 +722,8 @@ button { font: inherit; color: inherit; }
 
 <div class="hcursor" id="handCursor" hidden><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24"/></svg><div class="ring"></div><div class="ripple"></div><div class="dot"></div><span class="clabel" id="cursorLabel"></span></div>
 
+<svg id="grip" aria-hidden="true"><line class="halo" id="gripHalo"/><line class="core" id="gripLine"/><circle id="gripA" r="20"/><circle id="gripB" r="20"/><circle class="mid" id="gripMid" r="4"/></svg>
+
 <button class="side-guide" id="btnGuide" type="button" hidden>
   <svg viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.3-5.5-3.5L4 13.8a1.4 1.4 0 0 1 2.3-1.6L8 14"/></svg>
   <span>Hand guide</span>
@@ -755,7 +765,7 @@ button { font: inherit; color: inherit; }
       <dt>Open hand</dt><dd>Move to rotate · hold still to pause</dd>
       <dt>Point</dt><dd>Highlight an atom</dd>
       <dt>Double-pinch</dt><dd>Click what you're pointing at · pinch and move to rotate</dd>
-      <dt>Two pinches</dt><dd>Move apart or together to zoom</dd>
+      <dt>Both hands closed</dt><dd>Hold it: turn, spin like a wheel, pull apart to zoom</dd>
       <dt>Swipe</dt><dd>Change mode or reaction stage</dd>
       <dt>Fist (hold)</dt><dd>Reset the view</dd>
     </dl>
@@ -1599,7 +1609,7 @@ const qExplore = (() => {
 })();
 const qTransfer = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.06, -0.38, 0));
 
-const ctrl = { q: qExplore.clone(), qT: qExplore.clone(), vYaw: 0, vPitch: 0, dragging: false };
+const ctrl = { q: qExplore.clone(), qT: qExplore.clone(), vYaw: 0, vPitch: 0, vRoll: 0, dragging: false };
 root.quaternion.copy(ctrl.q);
 
 function rotateBy(yaw, pitch) {
@@ -1609,6 +1619,12 @@ function rotateBy(yaw, pitch) {
 }
 
 const cam = { target: V(), dist: 18, dir: V(0, 0.2, 1).normalize() };
+
+// Spin around the line of sight, like turning a steering wheel.
+function spinBy(angle) {
+  _q1.setFromAxisAngle(cam.dir, angle);
+  ctrl.qT.premultiply(_q1).normalize();
+}
 
 function stageFraming(out) {
   // Returns the base camera target (stage frame) and distance for the current timeline position.
@@ -2214,7 +2230,7 @@ function setShowH(on) {
 }
 function resetView() {
   ctrl.qT.copy(state.mode === 'transfer' ? qTransfer : qExplore);
-  ctrl.vYaw = ctrl.vPitch = 0;
+  ctrl.vYaw = ctrl.vPitch = ctrl.vRoll = 0;
   state.zoomT = 1;
   if (state.mode === 'explore') clearSelection();
 }
@@ -2371,7 +2387,7 @@ canvas.addEventListener('pointerdown', (e) => {
     const [p, q] = [...pointers.values()];
     pinchStart = { d: Math.hypot(p.x - q.x, p.y - q.y), zoom: state.zoomT };
   }
-  ctrl.vYaw = ctrl.vPitch = 0;
+  ctrl.vYaw = ctrl.vPitch = ctrl.vRoll = 0;
   if (notchOpen && notchPinned) setNotch(false);
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -2621,7 +2637,7 @@ class OneEuro {
 const HAND_CONN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
 const handVideo = $('handVideo'), pipCanvas = $('pipCanvas'), pipCtx = pipCanvas.getContext('2d');
 const cursorEl = $('handCursor');
-const HAND_GUIDE = 'Point to aim · Double-pinch to click · Open hand: rotate · Swipe: next · Hold palm still: pause';
+const HAND_GUIDE = 'Point to aim · Double-pinch to click · Grab with both hands to turn and zoom · Swipe for next';
 // By default the middle of the camera frame maps to the whole screen, so small, comfortable hand movements
 // reach every corner. Calibrate replaces this with a box measured around your own hand.
 const DEFAULT_CALIB = { cx: 0.5, cy: 0.45, hh: 0.3 };
@@ -2632,7 +2648,7 @@ const hs = {
   calibrating: null,
   hint: '', everSeen: false, guideUntil: 0,
   cursor: { x: innerWidth / 2, y: innerHeight / 2, sx: innerWidth / 2, sy: innerHeight / 2 },
-  hoverHist: [], zoom: null, results: 0, fpsStart: performance.now(), fps: 0, lagSum: 0, lagN: 0, lag: 0, tookSum: 0, took: 0,
+  hoverHist: [], grip: null, gripEndedAt: 0, results: 0, fpsStart: performance.now(), fps: 0, lagSum: 0, lagN: 0, lag: 0, tookSum: 0, took: 0,
   rotHist: [], lastActionAt: 0, armed: null,
 };
 let videoAspect = 4 / 3;
@@ -2747,18 +2763,14 @@ function nav(dir) {
   return ['Explore', 'Functional groups', 'Acetyl transfer'][i];
 }
 
+const grabbing = (h) => h.gesture === 'Pinch' || h.gesture === 'Fist';
+
 function handActions(visible, now) {
-  const both = visible.length === 2 && visible.every((h) => h.gesture === 'Pinch');
-  // Two pinching hands: spread apart to zoom in, bring together to zoom out.
-  if (both && !tut.open) {
-    const [a, b] = visible;
-    const d = hDist(mid(a.pts[4], a.pts[8]), mid(b.pts[4], b.pts[8]));
-    if (!hs.zoom) hs.zoom = { d, z: state.zoomT };
-    state.zoomT = clamp(hs.zoom.z * (hs.zoom.d / Math.max(d, 0.01)), 0.4, 2.4);
-    for (const h of visible) h.pinchDragged = true;
+  if (visible.length === 2 && visible.every(grabbing)) {
+    grip(visible, now);
     return;
   }
-  hs.zoom = null;
+  if (hs.grip) releaseGrip(now);
   const h = hs.primary;
   if (!h) return;
   const P = h.pts;
@@ -2803,14 +2815,11 @@ function handActions(visible, now) {
   if (hs.armed && now - hs.armed.t > DOUBLE_PINCH_MS) disarm();
 
   // Open palm: move to rotate. Fast flicks are swipes, so they don't rotate. While the guide is open, hands
-  // don't move the molecule: their moves only count as practice for the step on screen.
-  if (h.prevPalm && h.gesture === 'Open palm' && now - h.stableSince > 150) {
+  // don't move the molecule behind it.
+  if (h.prevPalm && h.gesture === 'Open palm' && now - h.stableSince > 150 && !tut.open) {
     const dx = h.palm.x - h.prevPalm.x, dy = h.palm.y - h.prevPalm.y;
     const speed = Math.hypot(dx, dy) / Math.max((now - h.prevPalmT) / 1000, 0.008);
-    if (speed < 1.1 && tut.open) {
-      tut.moved += Math.hypot(dx, dy);
-      if (tut.moved > 0.12) tutPractice('rotate');
-    } else if (speed < 1.1) {
+    if (speed < 1.1) {
       const yaw = dx * 3.4 * hs.sens, pitch = dy * 2.8 * hs.sens;
       rotateBy(yaw, pitch);
       hs.rotHist.push({ t: now, yaw, pitch });
@@ -2843,8 +2852,9 @@ function handActions(visible, now) {
     }
   }
 
-  // Hold still: open palm toggles pause, fist resets the view.
-  if (h.gesture === 'Open palm' || h.gesture === 'Fist') {
+  // Hold still: open palm toggles pause, fist resets the view. Not straight after a two-hand grab, when the
+  // hand left over is often still a fist.
+  if ((h.gesture === 'Open palm' || h.gesture === 'Fist') && now - hs.gripEndedAt > 1200) {
     if (h.holdKind !== h.gesture || !h.holdAnchor || hDist(h.palm, h.holdAnchor) > Math.max(0.02, h.size * 0.22)) {
       h.holdKind = h.gesture; h.holdStart = now; h.holdAnchor = { ...h.palm }; h.holdFired = false;
     }
@@ -2856,6 +2866,52 @@ function handActions(visible, now) {
       else toast(`Palm held · ${togglePlay()}`);
     }
   } else { h.holdKind = null; h.holdP = 0; }
+}
+
+// Both hands closed (fists or pinches) hold the molecule like a real object: move them together to turn it,
+// turn them like a steering wheel to spin it, pull them apart to zoom. Let go mid-turn and it coasts to a stop.
+function grip(visible, now) {
+  // Left to right on screen, so the line between the hands keeps its direction.
+  const [a, b] = visible[0].palm.x <= visible[1].palm.x ? visible : [visible[1], visible[0]];
+  const d = hDist(a.palm, b.palm);
+  const ang = Math.atan2(b.palm.y - a.palm.y, b.palm.x - a.palm.x);
+  const m = mid(a.palm, b.palm);
+  for (const h of visible) { h.pinchDragged = true; h.holdKind = null; h.holdP = 0; }
+  disarm();
+  const g = hs.grip;
+  if (!g) {
+    hs.grip = { d0: d, z0: state.zoomT, ang, m, t: now, a: { ...a.palm }, b: { ...b.palm }, vYaw: 0, vPitch: 0, vRoll: 0, moved: 0 };
+    return;
+  }
+  const dt = Math.max((now - g.t) / 1000, 0.008);
+  const yaw = (m.x - g.m.x) * 3.4 * hs.sens, pitch = (m.y - g.m.y) * 2.8 * hs.sens;
+  let turn = ang - g.ang;
+  turn = -Math.atan2(Math.sin(turn), Math.cos(turn)); // clockwise hands, clockwise molecule
+  if (tut.open) {
+    // In the guide the hold is practice only: it doesn't move the molecule behind it.
+    g.moved += Math.abs(turn) + Math.hypot(m.x - g.m.x, m.y - g.m.y) + Math.abs(d - g.d);
+    if (g.moved > 0.15) tutPractice('grip');
+  } else {
+    rotateBy(yaw, pitch);
+    spinBy(turn);
+    state.zoomT = clamp(g.z0 * (g.d0 / Math.max(d, 0.01)), 0.4, 2.4);
+  }
+  // Smoothed speeds, for the coast after letting go.
+  const k = 0.35;
+  g.vYaw += (yaw / dt - g.vYaw) * k;
+  g.vPitch += (pitch / dt - g.vPitch) * k;
+  g.vRoll += (turn / dt - g.vRoll) * k;
+  Object.assign(g, { ang, m, t: now, d, a: { ...a.palm }, b: { ...b.palm } });
+}
+
+function releaseGrip(now) {
+  const g = hs.grip;
+  hs.grip = null;
+  hs.gripEndedAt = now;
+  if (tut.open || now - g.t > 150) return;
+  ctrl.vYaw = clamp(g.vYaw, -4, 4);
+  ctrl.vPitch = clamp(g.vPitch, -4, 4);
+  ctrl.vRoll = clamp(g.vRoll, -4, 4);
 }
 
 const DOUBLE_PINCH_MS = 800;
@@ -2986,8 +3042,7 @@ function updateHandStatus(visible, now = performance.now()) {
   const hintText = !hs.everSeen ? 'Raise your hand in front of the camera' : now < hs.guideUntil ? HAND_GUIDE : '';
   if (hintText !== hs.hint) { hs.hint = hintText; updateHint(); }
   const h = hs.primary;
-  const two = visible.length === 2 && visible.every((x) => x.gesture === 'Pinch');
-  const g = two ? 'Two-hand zoom' : h ? GESTURE_TEXT[h.gesture] : '';
+  const g = hs.grip ? 'Both hands · turn, spin, zoom' : h ? GESTURE_TEXT[h.gesture] : '';
   $('pipText').textContent = h ? 'Hand detected' : 'Show your hand';
   $('pipDot').dataset.on = String(!!h);
   $('handsDot').dataset.on = String(!!h);
@@ -2997,7 +3052,7 @@ function updateHandStatus(visible, now = performance.now()) {
   $('pipFps').textContent = `${hs.fps} fps`;
   $('handsFps').textContent = `${hs.fps} fps · ${hs.lag} ms delay · model ${hs.took} ms · ${hs.tracker?.delegate || 'main thread'}`;
   $('statusDot').dataset.tone = h ? 'live' : 'wait';
-  cursorEl.hidden = !h;
+  cursorEl.hidden = !h || !!hs.grip;
   if (h) cursorEl.dataset.g = h.gesture;
   drawPip(visible);
 }
@@ -3150,11 +3205,10 @@ const CAM_Z = 80;
 const demo = {
   ready: false, failed: false, resized: true, w: 0, h: 0,
   t: 0, prevT: -1, clock: 0, blend: 1, from: null,
-  pts: Array.from({ length: 21 }, () => V()),
   trail: [],
   ui: {},
 };
-const dv = { a: V(), b: V(), c: V(), d: V(), q: new THREE.Quaternion(), e: new THREE.Euler() };
+const dv = { a: V(), b: V(), c: V(), d: V(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler() };
 const lerpN = (a, b, k) => a + (b - a) * k;
 
 // A rounded slab for the palm: a sphere pushed toward a box and tapered from knuckles to wrist.
@@ -3216,7 +3270,8 @@ function initDemo() {
   sc.add(keyL, rimB, rimV, new THREE.HemisphereLight(0x8090ff, 0x0a0812, 0.45));
   demo.camera = new THREE.PerspectiveCamera(30, 2, 1, 400);
   demo.camera.position.set(0, 0, CAM_Z);
-  buildDemoHand();
+  const parts = handParts();
+  demo.hands = [buildDemoHand(parts, false), buildDemoHand(parts, true)];
   buildDemoMolecule();
   demo.skel = $('tutSkel').getContext('2d');
   demo.ui = {
@@ -3248,7 +3303,8 @@ function sizeDemo() {
   demo.skel.setTransform(pr, 0, 0, pr, 0, 0);
 }
 
-function buildDemoHand() {
+// Geometry and materials shared by both virtual hands.
+function handParts() {
   // A soft, pale hand with a cool rim light around its edges, so it reads as a guide, not a real hand.
   const handMat = (extra) => {
     const m = new THREE.MeshStandardMaterial({ color: 0xb7c0e4, roughness: 0.5, metalness: 0, envMapIntensity: 0.85, ...extra });
@@ -3263,44 +3319,86 @@ function buildDemoHand() {
     };
     return m;
   };
-  const mat = handMat();
-  const g = demo.hand = new THREE.Group();
-  demo.scene.add(g);
-  const ball = new THREE.SphereGeometry(1, 28, 20);
   const R = [];
   THUMB.r.forEach((r, j) => { R[1 + j] = r; });
   FINGERS.forEach((F, i) => F.r.forEach((r, j) => { R[5 + i * 4 + j] = r; }));
-  demo.joints = [];
-  for (let i = 1; i < 21; i++) {
-    const m = new THREE.Mesh(ball, mat);
-    m.scale.setScalar(R[i]);
-    g.add(m);
-    demo.joints[i] = m;
-  }
-  demo.bones = [];
+  const bones = [];
   for (const c of HAND_CHAINS) {
     for (let j = 0; j < 3; j++) {
       const a = c[j], b = c[j + 1];
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(R[b], R[a], 1, 24, 1, true).translate(0, 0.5, 0), mat);
-      g.add(m);
-      demo.bones.push({ m, a, b });
+      bones.push({ a, b, geo: new THREE.CylinderGeometry(R[b], R[a], 1, 24, 1, true).translate(0, 0.5, 0) });
     }
   }
-  g.add(new THREE.Mesh(palmGeometry(), mat));
-  const wrist = new THREE.Mesh(ball, mat);
+  // The forearm fades into the dark, so the eye stays on the hand.
+  const arm = new THREE.CylinderGeometry(2.25, 2.9, 34, 32, 12, true).translate(0, -17, 0);
+  const ap = arm.attributes.position;
+  arm.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ap.count * 3).map((_, i) => {
+    const y = ap.getY(Math.floor(i / 3));
+    return 1 - seg(-y, 1.5, 15);
+  }), 3));
+  return { skin: handMat(), armSkin: handMat({ vertexColors: true }), R, bones, arm, ball: new THREE.SphereGeometry(1, 28, 20), palm: palmGeometry() };
+}
+
+function buildDemoHand(parts, mirror) {
+  const g = new THREE.Group();
+  g.scale.x = mirror ? -1 : 1;
+  demo.scene.add(g);
+  const H = { g, mirror, joints: [], bones: [], pts: Array.from({ length: 21 }, () => V()), q: new THREE.Quaternion(), p: V() };
+  for (let i = 1; i < 21; i++) {
+    const m = new THREE.Mesh(parts.ball, parts.skin);
+    m.scale.setScalar(parts.R[i]);
+    g.add(m);
+    H.joints[i] = m;
+  }
+  for (const b of parts.bones) {
+    const m = new THREE.Mesh(b.geo, parts.skin);
+    g.add(m);
+    H.bones.push({ m, a: b.a, b: b.b });
+  }
+  g.add(new THREE.Mesh(parts.palm, parts.skin));
+  const wrist = new THREE.Mesh(parts.ball, parts.skin);
   wrist.position.set(0.1, 0.8, -0.4);
   wrist.scale.set(2.3, 1.7, 1.3);
-  // The forearm fades into the dark, so the eye stays on the hand.
-  const armGeo = new THREE.CylinderGeometry(2.25, 2.75, 20, 32, 8, true).translate(0, -10, 0);
-  const ap = armGeo.attributes.position;
-  armGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ap.count * 3).map((_, i) => {
-    const y = ap.getY(Math.floor(i / 3));
-    return 1 - 0.92 * seg(-y, 1.5, 13);
-  }), 3));
-  const arm = new THREE.Mesh(armGeo, handMat({ vertexColors: true }));
+  const arm = new THREE.Mesh(parts.arm, parts.armSkin);
   arm.position.set(0.1, 0.8, -0.4);
   arm.scale.set(1, 1, 0.6);
   g.add(wrist, arm);
+  return H;
+}
+
+// Pose a virtual hand from a step's spec, then place it so its anchor (fingertip, pinch or palm) lands on the
+// spec's target. Right after a step change it glides from where it was.
+function placeDemoHand(H, spec, from, k) {
+  const P = H.pts;
+  solveHand(spec.pa, spec.pb, spec.k, P);
+  H.q.setFromEuler(dv.e.set(spec.pitch, spec.yaw, spec.roll, 'YXZ'));
+  const anchor = anchorOf(spec.anchor, P, V());
+  if (H.mirror) anchor.x = -anchor.x;
+  H.p.copy(spec.at).sub(anchor.applyQuaternion(H.q));
+  if (from && k < 1) {
+    H.q.slerpQuaternions(from.q, H.q, k);
+    H.p.lerpVectors(from.p, H.p, k);
+    P.forEach((v, i) => v.lerpVectors(from.pts[i], v, k));
+  }
+  H.g.quaternion.copy(H.q);
+  H.g.position.copy(H.p);
+  for (let i = 1; i < 21; i++) H.joints[i].position.copy(P[i]);
+  for (const b of H.bones) {
+    dv.a.subVectors(P[b.b], P[b.a]);
+    const len = dv.a.length();
+    b.m.position.copy(P[b.a]);
+    b.m.quaternion.setFromUnitVectors(AX_Y, dv.a.divideScalar(len || 1));
+    b.m.scale.set(1, len, 1);
+  }
+}
+
+// Where things are at the end of the last frame: the starting point for the glide into a new step.
+function snapDemo() {
+  if (!demo.drawn) return null;
+  return {
+    hands: demo.hands.map((H) => ({ q: H.g.quaternion.clone(), p: H.g.position.clone(), pts: H.pts.map((v) => v.clone()), on: H.g.visible })),
+    molQ: demo.mol.quaternion.clone(), molP: demo.mol.position.clone(), molS: demo.mol.scale.x,
+  };
 }
 
 function buildDemoMolecule() {
@@ -3385,10 +3483,13 @@ function anchorOf(kind, P, out) {
 }
 
 // Where atom i (or the empty spot, for -1) of the example molecule sits in the scene for this frame's state.
+function molQuat(m, out) {
+  out.setFromEuler(dv.e.set(MOL_TILT.pitch + m.pitch, MOL_TILT.yaw + m.yaw, 0, 'YXZ'));
+  return out.premultiply(dv.q2.setFromAxisAngle(AX_Z, m.roll));
+}
 function molPoint(s, i, out = V()) {
   const m = s.mol;
-  dv.q.setFromEuler(dv.e.set(MOL_TILT.pitch + m.pitch, MOL_TILT.yaw + m.yaw, 0, 'YXZ'));
-  return out.copy(i < 0 ? DEMO_EMPTY : DEMO_ATOMS[i].v).multiplyScalar(MOL_SCALE).applyQuaternion(dv.q).add(dv.a.set(m.x, m.y, m.z));
+  return out.copy(i < 0 ? DEMO_EMPTY : DEMO_ATOMS[i].v).multiplyScalar(MOL_SCALE * m.scale).applyQuaternion(molQuat(m, dv.q)).add(dv.a.set(m.x, m.y, m.z));
 }
 
 // Slide a point along the camera ray to the hand's depth, so the fingertip covers it on screen.
@@ -3458,16 +3559,29 @@ const TUTORIAL = [
     },
   },
   {
-    title: 'Open hand to rotate',
-    text: 'Move an open hand and the molecule turns with it. To zoom, pinch with both hands and pull them apart.',
-    try: 'rotate', dur: 6.4, keyT: 1.6,
+    title: 'Grab with both hands',
+    text: 'Close both hands as if you are holding it. Turn them like a steering wheel to spin it, and pull them apart to zoom.',
+    try: 'grip', dur: 7.4, keyT: 1.7,
     play(t, s) {
-      setPose(s, 'open', 'open');
-      const sway = Math.sin((t / 6.4) * Math.PI * 2);
-      s.mol.yaw = Math.sin(((t - 0.1) / 6.4) * Math.PI * 2) * 1.1;
+      const close = ease.inOut(seg(t, 0.55, 0.95)) * (1 - ease.inOut(seg(t, 6.2, 6.6)));
+      const away = (1 - ease.out(seg(t, 0, 0.6))) + ease.in(seg(t, 6.7, 7.4));
+      const wheel = Math.sin(seg(t, 1.1, 3.4) * Math.PI * 2) * 0.5;
+      const spread = ease.inOut(seg(t, 3.6, 4.4)) - ease.inOut(seg(t, 5.0, 5.8));
+      const half = 13.5 + 6 * spread + 26 * away;
+      s.mol.x = 0; s.mol.y = 1; s.mol.z = -2;
+      s.mol.roll = wheel;
+      s.mol.scale = 1 + 0.42 * spread;
+      s.mol.yaw = demo.clock * 0.12;
+      // Both hands circle the molecule's centre together, like hands on a steering wheel.
+      const cx = 0, cy = 0.5, ox = Math.cos(wheel) * half, oy = Math.sin(wheel) * half;
+      setPose(s, 'open', 'fist', close);
       s.anchor = 'palm';
-      s.at.set(13 + sway * 5.5, -4, HAND_Z);
-      s.yaw = 0.12 - sway * 0.08; s.pitch = -0.1; s.roll = -0.04;
+      s.at.set(cx + ox, cy + oy, 3);
+      s.yaw = 1.2; s.pitch = 0; s.roll = wheel * 0.35;
+      s.left = { pa: POSES.open, pb: POSES.fist, k: close, anchor: 'palm', at: V(cx - ox, cy - oy, 3), yaw: -1.2, pitch: 0, roll: wheel * 0.35 };
+      s.grip = close > 0.85 ? 1 : 0;
+      if (t > 1.1 && t < 3.4) s.badge = ['Turn to spin', 'live'];
+      else if (t > 3.6 && t < 5.8) s.badge = ['Pull apart to zoom', 'live'];
     },
   },
   {
@@ -3522,7 +3636,8 @@ function freshDemoState() {
   return {
     pa: POSES.open, pb: POSES.open, k: 0,
     anchor: 'palm', at: V(), yaw: 0, pitch: 0, roll: 0,
-    mol: { x: -8, y: 1.5, z: -6, yaw: 0, pitch: 0 },
+    mol: { x: -8, y: 1.5, z: -6, yaw: 0, pitch: 0, roll: 0, scale: 1 },
+    left: null, grip: 0,
     group: 0, sel: 0,
     cursor: null, g: 'Point', armed: false, clickAt: -1, hold: 0, count: '',
     skel: 0, trail: false, chips: -1, badge: null,
@@ -3557,45 +3672,27 @@ function renderDemo(dt) {
   const t = reduceMotion ? step.keyT : demo.t % step.dur;
   const s = freshDemoState();
   step.play(t, s);
-  const P = demo.pts;
+  const [H, H2] = demo.hands;
+  const P = H.pts;
 
-  // Molecule.
-  dv.q.setFromEuler(dv.e.set(MOL_TILT.pitch + s.mol.pitch, MOL_TILT.yaw + s.mol.yaw, 0, 'YXZ'));
-  const molQ = dv.q.clone(), molP = V(s.mol.x, s.mol.y, s.mol.z);
-  // Hand: pose it, then place it so its anchor (fingertip, pinch or palm) lands on the target point.
-  solveHand(s.pa, s.pb, s.k, P);
-  const handQ = new THREE.Quaternion().setFromEuler(dv.e.set(s.pitch, s.yaw, s.roll, 'YXZ'));
-  const handP = s.at.clone().sub(anchorOf(s.anchor, P, V()).applyQuaternion(handQ));
   // For a moment after changing step, glide from where the last step left off instead of jumping.
   demo.blend = Math.min(1, demo.blend + dt / 0.45);
-  if (demo.from && demo.blend < 1 && !reduceMotion) {
-    const k = ease.inOut(demo.blend), f = demo.from;
-    handQ.slerpQuaternions(f.handQ, handQ, k);
-    handP.lerpVectors(f.handP, handP, k);
-    P.forEach((v, i) => v.lerpVectors(f.pts[i], v, k));
-    molQ.slerpQuaternions(f.molQ, molQ, k);
-    molP.lerpVectors(f.molP, molP, k);
-  }
+  const f = !reduceMotion && demo.blend < 1 ? demo.from : null;
+  const k = ease.inOut(demo.blend);
+  const molQ = molQuat(s.mol, new THREE.Quaternion()), molP = V(s.mol.x, s.mol.y, s.mol.z);
+  let molS = MOL_SCALE * s.mol.scale;
+  if (f) { molQ.slerpQuaternions(f.molQ, molQ, k); molP.lerpVectors(f.molP, molP, k); molS = lerpN(f.molS, molS, k); }
   demo.mol.quaternion.copy(molQ);
   demo.mol.position.copy(molP);
-  demo.mol.scale.setScalar(MOL_SCALE);
-  demo.hand.quaternion.copy(handQ);
-  demo.hand.position.copy(handP);
-  for (let i = 1; i < 21; i++) demo.joints[i].position.copy(P[i]);
-  for (const b of demo.bones) {
-    dv.a.subVectors(P[b.b], P[b.a]);
-    const len = dv.a.length();
-    b.m.position.copy(P[b.a]);
-    b.m.quaternion.setFromUnitVectors(AX_Y, dv.a.divideScalar(len || 1));
-    b.m.scale.set(1, len, 1);
-  }
-  const L = demo.last ||= { handQ: new THREE.Quaternion(), handP: V(), pts: P.map(() => V()), molQ: new THREE.Quaternion(), molP: V() };
-  L.handQ.copy(handQ); L.handP.copy(handP); L.molQ.copy(molQ); L.molP.copy(molP);
-  P.forEach((v, i) => L.pts[i].copy(v));
+  demo.mol.scale.setScalar(molS);
+  placeDemoHand(H, s, f?.hands[0], k);
+  H2.g.visible = !!s.left;
+  if (s.left) placeDemoHand(H2, s.left, f?.hands[1].on ? f.hands[1] : null, k);
+  demo.drawn = true;
   demo.scene.updateMatrixWorld();
 
   // Cursor: the ring sits where the fingertip is, as in the app. Whatever atom is under it lights up.
-  const worldOf = (v) => demo.hand.localToWorld(v.clone());
+  const worldOf = (v) => H.g.localToWorld(v.clone());
   let cur = null;
   if (s.cursor) cur = toPx(s.cursor === 'tip' ? worldOf(P[8]) : s.at);
   let hover = -1;
@@ -3603,7 +3700,7 @@ function renderDemo(dt) {
     let best = Infinity;
     demo.atoms.forEach((a, i) => {
       const w = demo.mol.localToWorld(a.v.clone());
-      const c = toPx(w), r = pxRadius(w, ELEMENTS[a.el].bs * MOL_SCALE) + 6;
+      const c = toPx(w), r = pxRadius(w, ELEMENTS[a.el].bs * molS) + 6;
       const d = Math.hypot(c.x - cur.x, c.y - cur.y);
       if (d < r && d < best) { best = d; hover = i; }
     });
@@ -3657,12 +3754,29 @@ function renderDemo(dt) {
   demo.renderer.render(demo.scene, demo.camera);
 }
 
-// The 2D layer: the tracking dots of step 1 (the same skeleton the camera box draws) and the swipe streak.
+// The 2D layer: the tracking dots of step 1 (the same skeleton the camera box draws), the line between two
+// gripping hands and the swipe streak.
 function drawDemoOverlay(s, worldOf) {
   const c = demo.skel;
+  const pts = demo.hands[0].pts;
   c.clearRect(0, 0, demo.w, demo.h);
+  if (s.grip) {
+    const [a, b] = demo.hands.map((H) => toPx(H.g.localToWorld(anchorOf('palm', H.pts, V()))));
+    c.strokeStyle = 'rgba(70, 224, 162, 0.16)';
+    c.lineWidth = 10;
+    c.lineCap = 'round';
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+    c.strokeStyle = '#46e0a2';
+    c.lineWidth = 1.6;
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+    c.fillStyle = 'rgba(70, 224, 162, 0.14)';
+    c.lineWidth = 2;
+    for (const p of [a, b]) { c.beginPath(); c.arc(p.x, p.y, 18, 0, Math.PI * 2); c.fill(); c.stroke(); }
+    c.fillStyle = '#46e0a2';
+    c.beginPath(); c.arc((a.x + b.x) / 2, (a.y + b.y) / 2, 4, 0, Math.PI * 2); c.fill();
+  }
   if (s.skel > 0.01) {
-    const px = demo.pts.map((v) => toPx(worldOf(v)));
+    const px = pts.map((v) => toPx(worldOf(v)));
     c.globalAlpha = s.skel;
     c.strokeStyle = 'rgba(70, 224, 162, 0.85)';
     c.lineWidth = 1.6;
@@ -3675,7 +3789,7 @@ function drawDemoOverlay(s, worldOf) {
   }
   const tr = demo.trail;
   if (s.trail) {
-    const p = toPx(worldOf(anchorOf('palm', demo.pts, V())));
+    const p = toPx(worldOf(anchorOf('palm', pts, V())));
     tr.push({ ...p, t: demo.clock });
   }
   while (tr.length && (demo.clock - tr[0].t > 0.22 || !s.trail)) tr.shift();
@@ -3695,7 +3809,7 @@ function drawDemoOverlay(s, worldOf) {
 const ACID_COL = new THREE.Color(GROUPS.acid.color);
 
 const TUT_KEY = 'aspirinLab.handGuideSeen';
-const tut = { open: false, step: 0, done: false, moved: 0 };
+const tut = { open: false, step: 0, done: false };
 const tutDots = $('tutDots');
 tutDots.innerHTML = TUTORIAL.map(() => '<i></i>').join('');
 
@@ -3708,11 +3822,9 @@ function renderTutorial() {
   $('tutBack').disabled = tut.step === 0;
   $('tutNext').textContent = tut.step === TUTORIAL.length - 1 ? 'Start' : 'Next';
   tut.done = false;
-  tut.moved = 0;
   renderTry();
   // Restart the demo for this step, gliding from the pose the previous step ended on.
-  const L = demo.last;
-  demo.from = L ? { handQ: L.handQ.clone(), handP: L.handP.clone(), pts: L.pts.map((v) => v.clone()), molQ: L.molQ.clone(), molP: L.molP.clone() } : null;
+  demo.from = snapDemo();
   demo.blend = demo.from ? 0 : 1;
   demo.t = 0;
   demo.prevT = -1;
@@ -3738,7 +3850,7 @@ function openTutorial() {
   initDemo();
   tut.open = true;
   tut.step = 0;
-  demo.last = null;
+  demo.drawn = false;
   renderTutorial();
   $('tutorial').hidden = false;
   demo.resized = true;
@@ -3775,6 +3887,27 @@ function updateCursor(dt) {
   hs.cursor.sy += (hs.cursor.y - hs.cursor.sy) * k;
   cursorEl.style.transform = `translate(${hs.cursor.sx.toFixed(1)}px, ${hs.cursor.sy.toFixed(1)}px)`;
   cursorEl.style.setProperty('--p', (hs.primary?.holdP || 0).toFixed(3));
+}
+
+const gripEl = $('grip');
+const gs = { on: false, snap: false, ax: 0, ay: 0, bx: 0, by: 0 };
+function updateGrip(dt) {
+  const g = hs.on ? hs.grip : null;
+  if (!!g !== gs.on) { gs.on = !!g; gripEl.classList.toggle('on', gs.on); gs.snap = gs.on; }
+  if (!g) return;
+  const a = toScreen(g.a), b = toScreen(g.b);
+  const k = gs.snap ? 1 : damp(38, dt);
+  gs.snap = false;
+  gs.ax += (a.x - gs.ax) * k; gs.ay += (a.y - gs.ay) * k;
+  gs.bx += (b.x - gs.bx) * k; gs.by += (b.y - gs.by) * k;
+  for (const id of ['gripHalo', 'gripLine']) {
+    const l = $(id);
+    l.setAttribute('x1', gs.ax.toFixed(1)); l.setAttribute('y1', gs.ay.toFixed(1));
+    l.setAttribute('x2', gs.bx.toFixed(1)); l.setAttribute('y2', gs.by.toFixed(1));
+  }
+  $('gripA').setAttribute('cx', gs.ax.toFixed(1)); $('gripA').setAttribute('cy', gs.ay.toFixed(1));
+  $('gripB').setAttribute('cx', gs.bx.toFixed(1)); $('gripB').setAttribute('cy', gs.by.toFixed(1));
+  $('gripMid').setAttribute('cx', ((gs.ax + gs.bx) / 2).toFixed(1)); $('gripMid').setAttribute('cy', ((gs.ay + gs.by) / 2).toFixed(1));
 }
 
 /* ============================================================
@@ -3882,10 +4015,11 @@ function frame(now) {
 
   // Rotation: inertia, auto-rotate, then glide toward the target orientation.
   if (!ctrl.dragging) {
-    if (Math.abs(ctrl.vYaw) + Math.abs(ctrl.vPitch) > 1e-4) {
+    if (Math.abs(ctrl.vYaw) + Math.abs(ctrl.vPitch) + Math.abs(ctrl.vRoll) > 1e-4) {
       rotateBy(ctrl.vYaw * dt, ctrl.vPitch * dt);
+      spinBy(ctrl.vRoll * dt);
       const f = Math.exp(-3.5 * dt);
-      ctrl.vYaw *= f; ctrl.vPitch *= f;
+      ctrl.vYaw *= f; ctrl.vPitch *= f; ctrl.vRoll *= f;
     }
     // Auto-rotation pauses while a hand is in view, so it never fights your hand.
     if (state.autoRotate && state.mode !== 'transfer' && !(hs.on && hs.primary)) rotateBy(0.22 * dt, 0);
@@ -3920,6 +4054,7 @@ function frame(now) {
   updateCaption();
   updateGroupLabel(dt);
   updateCursor(dt);
+  updateGrip(dt);
 
   animateBackground(reduceMotion ? 12 : time);
   if (state.mode !== 'transfer' && lastStageShown !== -1) { lastStageShown = -1; $('notchLabel').textContent = 'ASPIRIN LAB'; }
